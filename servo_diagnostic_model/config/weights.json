@@ -1,0 +1,11 @@
+{
+  "error": 0.25,
+  "statusword": 0.15,
+  "temperature": 0.18,
+  "current": 0.16,
+  "torque": 0.14,
+  "voltage": 0.14,
+  "statistical_anomaly": 0.08,
+  "velocity": 0.03,
+  "data_quality": 0.02
+}

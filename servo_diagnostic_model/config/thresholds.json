@@ -1,0 +1,16 @@
+{
+  "window_seconds": 5,
+  "window_step_seconds": 1,
+  "min_samples_per_window": 10,
+  "health_normal": 85,
+  "health_observation": 70,
+  "health_warning": 50,
+  "anomaly_observation": 0.3,
+  "anomaly_warning": 0.5,
+  "anomaly_critical": 0.75,
+  "risk_observation": 0.5,
+  "risk_warning": 0.75,
+  "risk_critical": 0.9,
+  "min_risk_for_main_cause": 0.3,
+  "round_digits": 3
+}
