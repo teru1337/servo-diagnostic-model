@@ -113,6 +113,18 @@ def test_recommendations_exists_and_is_list():
     result = diagnose_window(_window(), *_configs())
 
     assert isinstance(result["recommendations"], list)
+    assert result["recommendations"]
+    assert result["recommendations"][0]["category"] == "normal_operation"
+
+
+def test_error_window_returns_critical_recommendation():
+    result = diagnose_window(_window(error_code=42), *_configs())
+
+    assert any(
+        recommendation["category"] == "drive_error"
+        and recommendation["priority"] == "critical"
+        for recommendation in result["recommendations"]
+    )
 
 
 def test_anomaly_score_is_zero_without_normal_profile():

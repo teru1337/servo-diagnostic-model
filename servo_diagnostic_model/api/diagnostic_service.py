@@ -22,6 +22,7 @@ from servo_diagnostic_model.model.explanation import (
 )
 from servo_diagnostic_model.model.health_score import calculate_health_score
 from servo_diagnostic_model.model.physical_risks import calculate_physical_risks
+from servo_diagnostic_model.recommendations.rule_based import generate_recommendations
 
 from .schemas import DiagnosticResult
 
@@ -86,7 +87,13 @@ def diagnose_window(
             features,
             main_causes,
         ),
-        "recommendations": [],
+        "recommendations": generate_recommendations(
+            state,
+            risks,
+            features,
+            main_causes,
+            thresholds,
+        ),
         "data_quality": _data_quality_summary(features, risks),
         "debug": {
             "anomaly": anomaly_result,
