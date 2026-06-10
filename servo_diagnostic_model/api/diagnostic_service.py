@@ -15,6 +15,7 @@ from servo_diagnostic_model.data.windowing import (
     make_windows,
 )
 from servo_diagnostic_model.features.feature_extractor import extract_features
+from servo_diagnostic_model.model.anomaly_score import calculate_anomaly_score
 from servo_diagnostic_model.model.classifier import classify_state, risk_level_from_state
 from servo_diagnostic_model.model.explanation import (
     generate_explanation,
@@ -52,11 +53,7 @@ def diagnose_window(
     features = extract_features(window, thresholds)
     risks = calculate_physical_risks(features, limits)
 
-    anomaly_result = {
-        "anomaly_score": 0.0,
-        "feature_scores": {},
-        "available": False,
-    }
+    anomaly_result = calculate_anomaly_score(features, normal_profile, thresholds)
     anomaly_score = anomaly_result["anomaly_score"]
     risks["statistical_anomaly"] = anomaly_score
 
@@ -98,7 +95,7 @@ def diagnose_window(
         "debug": {
             "anomaly": anomaly_result,
             "normal_profile_provided": normal_profile is not None,
-            "statistical_anomaly_enabled": False,
+            "statistical_anomaly_enabled": anomaly_result["available"],
         },
     }
     return _to_json_compatible(result)

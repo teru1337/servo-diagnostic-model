@@ -132,3 +132,23 @@ def test_anomaly_score_is_zero_without_normal_profile():
 
     assert result["anomaly_score"] == 0.0
     assert result["debug"]["anomaly"]["available"] is False
+
+
+def test_diagnostic_service_uses_anomaly_score_with_normal_profile():
+    profile = {
+        "global": {
+            "current_rms": {
+                "median": 0.0,
+                "mad": 0.1,
+                "std": 0.1,
+                "count": 10,
+            }
+        }
+    }
+
+    result = diagnose_window(_window(), *_configs(), normal_profile=profile)
+
+    assert result["anomaly_score"] == 1.0
+    assert result["risks"]["statistical_anomaly"] == 1.0
+    assert result["debug"]["anomaly"]["profile_used"] == "global"
+    json.dumps(result)
