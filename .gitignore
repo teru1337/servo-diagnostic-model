@@ -1,53 +1,20 @@
-# Python cache
+# Python
+.venv/
 __pycache__/
 *.py[cod]
-*$py.class
-
-# Virtual environments
-.venv/
-venv/
-env/
-
-# Environment variables / secrets
-.env
-.env.*
-!.env.example
-
-# IDE/editor settings
-.vscode/
-.idea/
-
-# Test/cache folders
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.coverage
-htmlcov/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Build/package artifacts
-build/
-dist/
 *.egg-info/
+dist/
+build/
 
-# Logs
-*.log
+# Local laboratory raw data
+data/lab/**/raw/
+data/lab/**/exports/
 
-# OS files
-.DS_Store
-Thumbs.db
+# Generated diagnostics
+artifacts/diagnostics/
+artifacts/plots/
 
-# Data/model artifacts
-data/raw/
-data/interim/
-data/processed/
-models/
-checkpoints/
-*.pkl
-*.joblib
-*.h5
-*.pt
-*.pth
-*.onnx
+# Keep profiles optional

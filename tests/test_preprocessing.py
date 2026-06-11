@@ -34,7 +34,7 @@ def test_normalize_column_names_maps_aliases():
     ]
 
 
-def test_parse_time_from_ts_creates_elapsed_seconds():
+def test_parse_time_from_mixed_iso_ts_creates_elapsed_seconds():
     df = pd.DataFrame(
         {"ts": ["2026-01-01T00:00:01", "2026-01-01T00:00:01.250"]}
     )
@@ -45,10 +45,27 @@ def test_parse_time_from_ts_creates_elapsed_seconds():
     assert result["t"].tolist() == [0.0, 0.25]
 
 
+def test_parse_time_from_numeric_unix_seconds():
+    df = pd.DataFrame({"ts": [1_780_000_000.0, 1_780_000_000.25]})
+
+    result = parse_time_columns(df)
+
+    expected = pd.to_datetime(df["ts"], unit="s", errors="coerce")
+    pd.testing.assert_series_equal(result["ts"], expected)
+
+
+def test_parse_time_derives_t_from_numeric_unix_seconds():
+    df = pd.DataFrame({"ts": [1_780_000_001.0, 1_780_000_001.5]})
+
+    result = parse_time_columns(df)
+
+    assert result["t"].tolist() == [0.0, 0.5]
+
+
 def test_parse_time_uses_existing_t_column():
     df = pd.DataFrame(
         {
-            "ts": ["2026-01-01T00:00:00", "2026-01-01T00:00:01"],
+            "ts": [1_780_000_000.0, 1_780_000_001.0],
             "t": ["4.5", "5.5"],
         }
     )
@@ -56,6 +73,15 @@ def test_parse_time_uses_existing_t_column():
     result = parse_time_columns(df)
 
     assert result["t"].tolist() == [4.5, 5.5]
+
+
+def test_parse_time_invalid_ts_values_do_not_crash_or_become_zero():
+    df = pd.DataFrame({"ts": ["invalid", None]})
+
+    result = parse_time_columns(df)
+
+    assert result["ts"].isna().all()
+    assert result["t"].isna().all()
 
 
 def test_validate_missing_time_is_critical_error():

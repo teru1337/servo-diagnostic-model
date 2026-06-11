@@ -125,7 +125,12 @@ def parse_time_columns(df: pd.DataFrame) -> pd.DataFrame:
 
     result = df.copy()
     if "ts" in result.columns:
-        result["ts"] = pd.to_datetime(result["ts"], errors="coerce", format="mixed")
+        if _looks_like_unix_seconds(result["ts"]):
+            result["ts"] = pd.to_datetime(result["ts"], unit="s", errors="coerce")
+        else:
+            result["ts"] = pd.to_datetime(
+                result["ts"], errors="coerce", format="mixed"
+            )
 
     if "t" in result.columns:
         result["t"] = pd.to_numeric(result["t"], errors="coerce").astype(float)
@@ -137,6 +142,17 @@ def parse_time_columns(df: pd.DataFrame) -> pd.DataFrame:
             result["t"] = (result["ts"] - first_valid).dt.total_seconds()
 
     return result
+
+
+def _looks_like_unix_seconds(values: pd.Series) -> bool:
+    """Return whether a numeric series contains plausible Unix-second values."""
+
+    if not pd.api.types.is_numeric_dtype(values):
+        return False
+    valid_values = values.dropna()
+    if valid_values.empty:
+        return False
+    return bool(valid_values.between(100_000_000, 100_000_000_000).all())
 
 
 def coerce_numeric_columns(df: pd.DataFrame) -> pd.DataFrame:
