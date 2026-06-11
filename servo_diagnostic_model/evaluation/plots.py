@@ -152,6 +152,17 @@ def plot_group_health_comparison(
         label="Minimum Health Score",
         zorder=3,
     )
+    for index, group in enumerate(groups):
+        if pd.isna(grouped.loc[group, "min_health"]):
+            axis.text(
+                index,
+                87,
+                "minimum\nnot available",
+                ha="center",
+                va="top",
+                fontsize=8,
+                color="#444444",
+            )
     axis.set(title="Health Score by experiment group", ylabel="Health Score")
     axis.set_xticks(x, [group.replace("_", "\n") for group in groups])
     axis.set_ylim(0, 100)
@@ -359,6 +370,17 @@ def plot_statistical_vs_physical_risks(
         label="Mean maximum physical risk",
         color="#277DA1",
     )
+    for index, group in enumerate(groups):
+        if pd.isna(grouped.loc[group, "max_physical_risk"]):
+            axis.text(
+                index + width / 2,
+                0.025,
+                "physical risk\nnot available",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                color="#444444",
+            )
     axis.set(
         title="Statistical anomaly risk versus physical risks",
         ylabel="Mean risk, 0..1",
