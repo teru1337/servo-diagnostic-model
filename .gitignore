@@ -12,6 +12,7 @@ build/
 # Local laboratory raw data
 data/lab/**/raw/
 data/lab/**/exports/
+data/lab/metadata
 
 # Generated diagnostics
 artifacts/diagnostics/

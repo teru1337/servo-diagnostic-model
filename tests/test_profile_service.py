@@ -1,12 +1,16 @@
 import ast
 import json
 from pathlib import Path
+import sys
 
 import pytest
 
 from servo_diagnostic_model.api.profile_service import (
+    _main,
     extract_feature_rows_from_csv,
+    extract_feature_rows_from_csv_files,
     fit_normal_profile_from_csv,
+    fit_normal_profile_from_csv_files,
 )
 from servo_diagnostic_model.model.statistical_profile import load_profile
 
@@ -29,18 +33,35 @@ FORBIDDEN_IMPORTS = {
 }
 
 
-def _write_telemetry_csv(path, error_code=0):
+def _write_telemetry_csv(
+    path, error_code=0, risk_label=None, is_artificial_anomaly=None
+):
+    metadata_columns = []
+    if risk_label is not None:
+        metadata_columns.append("risk_label")
+    if is_artificial_anomaly is not None:
+        metadata_columns.append("is_artificial_anomaly")
     rows = [
         "t,device_id,statusword,velocity,current_A,torque_Nm,dc_bus_voltage,drive_temp,error_code"
+        + ("," + ",".join(metadata_columns) if metadata_columns else "")
     ]
-    rows.extend(
-        (
+    for index in range(101):
+        values = [
             f"{index / 10},servo-1,4,{100 + index % 5},"
             f"{1 + index % 3 / 100},{0.5 + index % 2 / 100},"
             f"{310 + index % 4 / 10},{35 + index % 3 / 100},{error_code}"
-        )
-        for index in range(101)
-    )
+        ]
+        if risk_label is not None:
+            values.append(str(risk_label(index) if callable(risk_label) else risk_label))
+        if is_artificial_anomaly is not None:
+            values.append(
+                str(
+                    is_artificial_anomaly(index)
+                    if callable(is_artificial_anomaly)
+                    else is_artificial_anomaly
+                )
+            )
+        rows.append(",".join(values))
     path.write_text("\n".join(rows), encoding="utf-8")
 
 
@@ -55,6 +76,17 @@ def test_extract_feature_rows_from_csv_returns_rows(tmp_path):
     assert all("current_rms" in row for row in rows)
 
 
+def test_extract_feature_rows_from_csv_files_combines_files(tmp_path):
+    first = tmp_path / "normal-1.csv"
+    second = tmp_path / "normal-2.csv"
+    _write_telemetry_csv(first)
+    _write_telemetry_csv(second)
+
+    rows = extract_feature_rows_from_csv_files([first, second], THRESHOLDS)
+
+    assert len(rows) == 12
+
+
 def test_fit_normal_profile_from_csv_creates_global_stats(tmp_path):
     csv_path = tmp_path / "normal.csv"
     output_path = tmp_path / "normal_profile.json"
@@ -66,6 +98,23 @@ def test_fit_normal_profile_from_csv_creates_global_stats(tmp_path):
 
     assert profile["global"]
     assert "current_rms" in profile["global"]
+
+
+def test_fit_normal_profile_from_two_csv_files(tmp_path):
+    first = tmp_path / "normal-1.csv"
+    second = tmp_path / "normal-2.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(first)
+    _write_telemetry_csv(second)
+
+    profile = fit_normal_profile_from_csv_files(
+        [first, second], output_path, THRESHOLDS, min_count=5
+    )
+
+    assert profile["meta"]["source_file_count"] == 2
+    assert profile["meta"]["window_count"] == 12
+    assert profile["meta"]["normal_row_count"] == 12
+    assert profile["meta"]["profile_feature_count"] == len(profile["global"])
 
 
 def test_fit_normal_profile_from_csv_writes_json_file(tmp_path):
@@ -91,6 +140,19 @@ def test_output_profile_contains_required_sections(tmp_path):
     )
 
     assert {"meta", "global", "by_motion_phase"} <= profile.keys()
+    assert profile["by_motion_phase"]
+
+
+def test_profile_result_is_json_serializable(tmp_path):
+    csv_path = tmp_path / "normal.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(csv_path)
+
+    profile = fit_normal_profile_from_csv(
+        csv_path, output_path, THRESHOLDS, min_count=5
+    )
+
+    json.dumps(profile, allow_nan=False)
 
 
 @pytest.mark.parametrize(
@@ -117,6 +179,109 @@ def test_no_normal_rows_raises_clear_error(tmp_path):
         fit_normal_profile_from_csv(
             str(csv_path), str(output_path), THRESHOLDS, min_count=5
         )
+
+
+def test_no_csv_paths_matched_raises_clear_error(tmp_path):
+    with pytest.raises(ValueError, match="No CSV paths matched"):
+        fit_normal_profile_from_csv_files(
+            [], tmp_path / "normal_profile.json", THRESHOLDS
+        )
+
+
+def test_missing_csv_path_raises_clear_error(tmp_path):
+    with pytest.raises(FileNotFoundError, match="Telemetry file not found"):
+        fit_normal_profile_from_csv_files(
+            [tmp_path / "missing.csv"],
+            tmp_path / "normal_profile.json",
+            THRESHOLDS,
+        )
+
+
+def test_mixed_normal_and_error_csv_excludes_bad_windows(tmp_path):
+    normal_path = tmp_path / "normal.csv"
+    error_path = tmp_path / "error.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(normal_path, risk_label="normal")
+    _write_telemetry_csv(error_path, error_code=42, risk_label="error")
+
+    profile = fit_normal_profile_from_csv_files(
+        [normal_path, error_path], output_path, THRESHOLDS, min_count=5
+    )
+
+    assert profile["meta"]["window_count"] == 12
+    assert profile["meta"]["normal_row_count"] == 6
+    assert profile["meta"]["row_count"] == 6
+
+
+def test_mixed_risk_labels_within_csv_exclude_non_normal_windows(tmp_path):
+    csv_path = tmp_path / "mixed.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(
+        csv_path, risk_label=lambda index: "normal" if index < 60 else "error"
+    )
+
+    profile = fit_normal_profile_from_csv(
+        csv_path, output_path, THRESHOLDS, min_count=1
+    )
+
+    assert profile["meta"]["window_count"] == 6
+    assert 0 < profile["meta"]["normal_row_count"] < 6
+
+
+def test_artificial_anomaly_rows_are_excluded(tmp_path):
+    normal_path = tmp_path / "normal.csv"
+    artificial_path = tmp_path / "artificial.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(normal_path, risk_label="normal", is_artificial_anomaly=0)
+    _write_telemetry_csv(
+        artificial_path, risk_label="normal", is_artificial_anomaly=1
+    )
+
+    profile = fit_normal_profile_from_csv_files(
+        [normal_path, artificial_path], output_path, THRESHOLDS, min_count=5
+    )
+
+    assert profile["meta"]["normal_row_count"] == 6
+
+
+def test_input_glob_matches_multiple_files(tmp_path, monkeypatch, capsys):
+    _write_telemetry_csv(tmp_path / "normal-1.csv")
+    _write_telemetry_csv(tmp_path / "normal-2.csv")
+    output_path = tmp_path / "normal_profile.json"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "profile_service",
+            "--input-glob",
+            str(tmp_path / "*.csv"),
+            str(output_path),
+        ],
+    )
+
+    _main()
+
+    profile = load_profile(str(output_path))
+    assert profile["meta"]["source_file_count"] == 2
+    assert "2 files" in capsys.readouterr().out
+
+
+def test_input_glob_with_no_matches_raises_clear_error(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "profile_service",
+            "--input-glob",
+            str(tmp_path / "*.csv"),
+            str(tmp_path / "normal_profile.json"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="No CSV paths matched"):
+        _main()
 
 
 def test_saved_profile_can_be_loaded(tmp_path):

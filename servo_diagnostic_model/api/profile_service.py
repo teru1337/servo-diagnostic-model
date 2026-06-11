@@ -1,9 +1,12 @@
 """Service for fitting normal statistical profiles from laboratory CSV telemetry."""
 
 import argparse
+import glob
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
+
+import pandas as pd
 
 from servo_diagnostic_model.data.loader import load_telemetry
 from servo_diagnostic_model.data.preprocessing import (
@@ -23,12 +26,54 @@ from servo_diagnostic_model.model.statistical_profile import (
 )
 
 
+CsvPath = str | Path
+
+
 def extract_feature_rows_from_csv(
-    csv_path: str, thresholds: dict[str, Any]
+    csv_path: CsvPath, thresholds: dict[str, Any]
 ) -> list[dict[str, Any]]:
     """Load a telemetry CSV and extract one feature dictionary per valid window."""
 
-    dataframe = load_telemetry(csv_path)
+    dataframe = _load_and_prepare_csv(csv_path)
+    windows = make_windows(
+        dataframe_to_samples(dataframe),
+        window_seconds=_positive_float(thresholds, "window_seconds", 5.0),
+        step_seconds=_positive_float(thresholds, "window_step_seconds", 1.0),
+        min_samples=_positive_int(thresholds, "min_samples_per_window", 10),
+    )
+    if not windows:
+        raise ValueError(
+            f"Telemetry CSV produced no valid windows for profile fitting: {csv_path}"
+        )
+
+    feature_rows: list[dict[str, Any]] = []
+    for window in windows:
+        features = extract_features(window, thresholds)
+        features.update(_window_metadata(dataframe, window.start_t, window.end_t))
+        feature_rows.append(features)
+    return feature_rows
+
+
+def extract_feature_rows_from_csv_files(
+    csv_paths: Iterable[CsvPath], thresholds: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Extract and combine feature rows from multiple telemetry CSV files."""
+
+    paths = _require_csv_paths(csv_paths)
+    feature_rows: list[dict[str, Any]] = []
+    for csv_path in paths:
+        feature_rows.extend(extract_feature_rows_from_csv(csv_path, thresholds))
+    return feature_rows
+
+
+def _load_and_prepare_csv(csv_path: CsvPath) -> pd.DataFrame:
+    try:
+        dataframe = load_telemetry(csv_path)
+    except FileNotFoundError:
+        raise
+    except (OSError, ValueError, pd.errors.ParserError) as exc:
+        raise ValueError(f"Failed to load telemetry CSV '{csv_path}': {exc}") from exc
+
     dataframe = normalize_column_names(dataframe)
     dataframe = parse_time_columns(dataframe)
     dataframe = coerce_numeric_columns(dataframe)
@@ -36,35 +81,77 @@ def extract_feature_rows_from_csv(
     validation_errors, _ = validate_dataframe(dataframe)
     if validation_errors:
         raise ValueError(
-            "Telemetry CSV cannot be used for profile fitting: "
+            f"Telemetry CSV cannot be used for profile fitting '{csv_path}': "
             + "; ".join(validation_errors)
         )
-
-    samples = dataframe_to_samples(dataframe)
-    windows = make_windows(
-        samples,
-        window_seconds=_positive_float(thresholds, "window_seconds", 5.0),
-        step_seconds=_positive_float(thresholds, "window_step_seconds", 1.0),
-        min_samples=_positive_int(thresholds, "min_samples_per_window", 10),
-    )
-    if not windows:
-        raise ValueError(
-            "Telemetry CSV produced no valid windows for profile fitting."
-        )
-    return [extract_features(window, thresholds) for window in windows]
+    return dataframe
 
 
-def fit_normal_profile_from_csv(
-    csv_path: str,
-    output_path: str,
-    thresholds: dict[str, Any],
-    feature_names: list[str] | None = None,
-    min_count: int = 5,
+def _window_metadata(
+    dataframe: pd.DataFrame, window_start: float, window_end: float
 ) -> dict[str, Any]:
-    """Fit and save a normal profile from normal laboratory CSV telemetry."""
+    metadata: dict[str, Any] = {}
+    rows = dataframe.loc[
+        (dataframe["t"] >= window_start) & (dataframe["t"] < window_end)
+    ]
+    if "is_artificial_anomaly" in rows.columns:
+        metadata["is_artificial_anomaly"] = any(
+            _is_truthy(value) for value in rows["is_artificial_anomaly"]
+        )
+    if "risk_label" in rows.columns:
+        labels = [
+            str(value).strip().lower()
+            for value in rows["risk_label"]
+            if not pd.isna(value) and str(value).strip()
+        ]
+        if labels:
+            metadata["risk_label"] = (
+                "normal"
+                if all(label == "normal" for label in labels)
+                else next(label for label in labels if label != "normal")
+            )
+    return metadata
 
-    feature_rows = extract_feature_rows_from_csv(csv_path, thresholds)
-    normal_rows = filter_normal_feature_rows(feature_rows)
+
+def _is_truthy(value: Any) -> bool:
+    if pd.isna(value):
+        return False
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y"}
+    return bool(value)
+
+
+def _filter_profile_rows(
+    feature_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    metadata_filtered = [
+        row
+        for row in feature_rows
+        if row.get("is_artificial_anomaly") is not True
+        and (
+            "risk_label" not in row
+            or str(row.get("risk_label")).strip().lower() == "normal"
+        )
+    ]
+    return filter_normal_feature_rows(metadata_filtered)
+
+
+def _require_csv_paths(csv_paths: Iterable[CsvPath]) -> list[Path]:
+    paths = [Path(path) for path in csv_paths]
+    if not paths:
+        raise ValueError("No CSV paths matched for profile fitting.")
+    return paths
+
+
+def _fit_and_save_profile(
+    csv_paths: list[Path],
+    output_path: CsvPath,
+    thresholds: dict[str, Any],
+    feature_names: list[str] | None,
+    min_count: int,
+) -> dict[str, Any]:
+    feature_rows = extract_feature_rows_from_csv_files(csv_paths, thresholds)
+    normal_rows = _filter_profile_rows(feature_rows)
     if not normal_rows:
         raise ValueError(
             "No valid normal feature rows are available for profile fitting."
@@ -76,8 +163,45 @@ def fit_normal_profile_from_csv(
             "Normal feature rows do not contain enough numeric values "
             f"to fit a global profile with min_count={min_count}."
         )
-    save_profile(profile, output_path)
+    profile["meta"].update(
+        {
+            "source_file_count": len(csv_paths),
+            "window_count": len(feature_rows),
+            "normal_row_count": len(normal_rows),
+            "profile_feature_count": len(profile["global"]),
+        }
+    )
+    save_profile(profile, str(output_path))
     return profile
+
+
+def fit_normal_profile_from_csv(
+    csv_path: CsvPath,
+    output_path: CsvPath,
+    thresholds: dict[str, Any],
+    feature_names: list[str] | None = None,
+    min_count: int = 5,
+) -> dict[str, Any]:
+    """Fit and save a normal profile from normal laboratory CSV telemetry."""
+
+    return fit_normal_profile_from_csv_files(
+        [csv_path], output_path, thresholds, feature_names, min_count
+    )
+
+
+def fit_normal_profile_from_csv_files(
+    csv_paths: Iterable[CsvPath],
+    output_path: CsvPath,
+    thresholds: dict[str, Any],
+    feature_names: list[str] | None = None,
+    min_count: int = 5,
+) -> dict[str, Any]:
+    """Fit and save a normal profile from multiple laboratory CSV files."""
+
+    paths = _require_csv_paths(csv_paths)
+    return _fit_and_save_profile(
+        paths, output_path, thresholds, feature_names, min_count
+    )
 
 
 def _positive_float(
@@ -105,12 +229,38 @@ def _positive_int(thresholds: dict[str, Any], key: str, default: int) -> int:
     return integer
 
 
+def _resolve_csv_paths(
+    positional_paths: Iterable[str], input_globs: Iterable[str]
+) -> list[Path]:
+    paths = [Path(path) for path in positional_paths]
+    for pattern in input_globs:
+        paths.extend(Path(path) for path in sorted(glob.glob(pattern)))
+
+    unique_paths: list[Path] = []
+    seen: set[Path] = set()
+    for path in paths:
+        resolved = path.resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique_paths.append(path)
+    return _require_csv_paths(unique_paths)
+
+
 def _main() -> None:
     parser = argparse.ArgumentParser(
-        description="Fit a normal servo telemetry profile from a laboratory CSV."
+        description="Fit a normal servo telemetry profile from laboratory CSV files."
     )
-    parser.add_argument("csv_path")
-    parser.add_argument("output_path")
+    parser.add_argument(
+        "paths",
+        nargs="+",
+        help="CSV input paths followed by the output normal_profile.json path.",
+    )
+    parser.add_argument(
+        "--input-glob",
+        action="append",
+        default=[],
+        help="Glob pattern for CSV inputs. May be repeated.",
+    )
     parser.add_argument(
         "--thresholds",
         default="servo_diagnostic_model/config/thresholds.json",
@@ -122,15 +272,20 @@ def _main() -> None:
     thresholds = json.loads(Path(args.thresholds).read_text(encoding="utf-8"))
     if not isinstance(thresholds, dict):
         raise ValueError("Thresholds file must contain a JSON object.")
-    profile = fit_normal_profile_from_csv(
-        args.csv_path,
-        args.output_path,
+    output_path = args.paths[-1]
+    csv_paths = _resolve_csv_paths(args.paths[:-1], args.input_glob)
+    profile = fit_normal_profile_from_csv_files(
+        csv_paths,
+        output_path,
         thresholds,
         min_count=args.min_count,
     )
+    meta = profile["meta"]
     print(
-        f"Saved normal profile with {profile['meta']['row_count']} normal windows "
-        f"to {args.output_path}"
+        f"Saved normal profile to {output_path}: "
+        f"{meta['source_file_count']} files, {meta['window_count']} windows, "
+        f"{meta['normal_row_count']} normal rows, "
+        f"{meta['profile_feature_count']} profile features."
     )
 
 
