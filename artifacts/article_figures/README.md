@@ -51,3 +51,8 @@ Group-level statistical versus physical risk comparison.
 E2 R02 current and torque features over time.
 
 ![fig6_e2_r02_current_torque](fig6_e2_r02_current_torque.png)
+
+## Normal references
+
+Normal minimum Health Score and mean maximum physical risk were computed from 17 manifest files without retraining the profile.
+Figure 6 includes normal-profile median reference lines for current_rms and torque_rms.

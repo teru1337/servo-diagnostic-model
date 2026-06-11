@@ -11,13 +11,14 @@ This report summarizes article-ready results from the physical-statistical diagn
 - Normal profile feature rows/windows: 2406.
 - Diagnostic test groups: transition, elevated_load, and pre_emergency_proxy.
 - E2 R02 is the main pre-emergency proxy case.
-- Normal group statistics were obtained from the verified Group Comparison table in `artifacts/diagnostics/lab_pipeline_analysis.md`; normal minimum Health Score and group-level physical-risk mean were not available.
+- Group anomaly and mean-health values were obtained from the verified Group Comparison table in `artifacts/diagnostics/lab_pipeline_analysis.md`.
+- Normal minimum Health Score and mean maximum physical risk were computed from 17 normal manifest files and 2406 windows using the existing normal profile without retraining.
 
 ## 3. Main quantitative result
 
 | Group | Mean Anomaly Score | Max Anomaly Score | Mean Health Score | Min Health Score |
 | ----- | -----------------: | ----------------: | ----------------: | ---------------: |
-| normal | 0.442 | 0.751 | 95.472 | not available |
+| normal | 0.442 | 0.751 | 95.472 | 50.000 |
 | transition | 0.529 | 0.779 | 94.444 | 80.234 |
 | elevated_load | 0.583 | 0.768 | 94.388 | 92.855 |
 | pre_emergency_proxy | 0.737 | 0.858 | 92.716 | 91.106 |
@@ -27,6 +28,8 @@ This report summarizes article-ready results from the physical-statistical diagn
 - Anomaly Score increases from normal operation to the pre-emergency proxy group.
 - E2 R02 has the strongest statistical deviation among the evaluated test sessions.
 - Physical risks remain low compared with statistical anomaly risk.
+- Normal-group mean maximum physical risk is 0.092.
+- Figure 6 includes normal-profile median references for current_rms (0.080 A) and torque_rms (0.045 N·m).
 - This supports a physical-statistical approach as an early-deviation indicator while retaining physically meaningful limit context.
 
 ## 5. Figure list
@@ -51,7 +54,6 @@ The group-level ordering supports the use of the statistical layer as an early-d
 - Normal false positives require further calibration.
 - The normal profile should be validated on independent normal data.
 - Physical limits should not be tuned only to increase anomaly contrast.
-- Normal group-level physical risk and minimum Health Score were unavailable in the completed comparison artifact.
 
 ## 8. Recommended next steps
 

@@ -5,11 +5,13 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import warnings
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from servo_diagnostic_model.api.diagnostic_service import diagnose_csv
 from servo_diagnostic_model.evaluation.plots import (
     GROUP_ORDER,
     PHYSICAL_RISKS,
@@ -94,9 +96,11 @@ def derive_group_comparison(
 
 
 def build_group_risk_comparison(
-    results: dict[str, Any], group_comparison: pd.DataFrame
+    results: dict[str, Any],
+    group_comparison: pd.DataFrame,
+    normal_metrics: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
-    """Aggregate test risks and retain normal with unavailable physical risk."""
+    """Aggregate test risks and include computed normal physical risk when available."""
     rows: list[dict[str, Any]] = []
     for entry in results.get("files", []):
         group = entry.get("manifest", {}).get("risk_label", "unknown")
@@ -118,7 +122,100 @@ def build_group_risk_comparison(
     ].iloc[0]
     normal_row = {"group": "normal", "statistical_anomaly": normal}
     normal_row.update({name: None for name in PHYSICAL_RISKS})
+    if normal_metrics and normal_metrics.get("mean_max_physical_risk") is not None:
+        normal_row["max_physical_risk"] = normal_metrics["mean_max_physical_risk"]
     return pd.concat([pd.DataFrame([normal_row]), risk_rows], ignore_index=True)
+
+
+def diagnose_manifest_files(
+    manifest_path: str | Path,
+    normal_profile_path: str | Path,
+    limits_path: str | Path,
+    weights_path: str | Path,
+    thresholds_path: str | Path,
+) -> dict[str, Any]:
+    """Diagnose every CSV listed in a manifest using an existing normal profile."""
+    manifest_file = Path(manifest_path)
+    if not manifest_file.is_file():
+        raise FileNotFoundError(f"Normal manifest does not exist: {manifest_file}")
+    manifest = pd.read_csv(manifest_file)
+    if "path" not in manifest:
+        raise ValueError("Normal manifest must contain a path column")
+    files = []
+    for row in manifest.to_dict("records"):
+        csv_path = Path(str(row["path"]))
+        try:
+            windows = diagnose_csv(
+                str(csv_path),
+                str(limits_path),
+                str(weights_path),
+                str(thresholds_path),
+                str(normal_profile_path),
+            )
+        except Exception as error:
+            warnings.warn(f"Could not diagnose normal CSV {csv_path}: {error}")
+            continue
+        files.append({"manifest": row, "windows": windows})
+    return {"files": files}
+
+
+def compute_group_metrics_from_results(results: dict[str, Any]) -> dict[str, Any]:
+    """Compute score and physical-risk metrics from diagnostic window results."""
+    health: list[float] = []
+    anomaly: list[float] = []
+    max_physical: list[float] = []
+    windows = 0
+    for entry in results.get("files", []):
+        for window in entry.get("windows", []):
+            windows += 1
+            if window.get("health_score") is not None:
+                health.append(float(window["health_score"]))
+            if window.get("anomaly_score") is not None:
+                anomaly.append(float(window["anomaly_score"]))
+            risks = [
+                float(window.get("risks", {}).get(name))
+                for name in PHYSICAL_RISKS
+                if window.get("risks", {}).get(name) is not None
+            ]
+            if risks:
+                max_physical.append(max(risks))
+    return {
+        "files": len(results.get("files", [])),
+        "windows": windows,
+        "mean_anomaly_score": sum(anomaly) / len(anomaly) if anomaly else None,
+        "max_anomaly_score": max(anomaly) if anomaly else None,
+        "mean_health_score": sum(health) / len(health) if health else None,
+        "min_health_score": min(health) if health else None,
+        "mean_max_physical_risk": (
+            sum(max_physical) / len(max_physical) if max_physical else None
+        ),
+    }
+
+
+def compute_normal_group_metrics(
+    manifest_path: str | Path,
+    normal_profile_path: str | Path,
+    limits_path: str | Path,
+    weights_path: str | Path,
+    thresholds_path: str | Path,
+) -> dict[str, Any]:
+    normal_results = diagnose_manifest_files(
+        manifest_path,
+        normal_profile_path,
+        limits_path,
+        weights_path,
+        thresholds_path,
+    )
+    return compute_group_metrics_from_results(normal_results)
+
+
+def extract_profile_median(profile: dict[str, Any], feature_name: str) -> float | None:
+    """Return a global normal-profile median when available."""
+    value = profile.get("global", {}).get(feature_name, {}).get("median")
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _format(value: Any) -> str:
@@ -162,11 +259,14 @@ def _write_results_report(
     results: dict[str, Any],
     profile_path: Path,
     normal_manifest_path: Path,
+    normal_metrics: dict[str, Any] | None,
+    normal_medians: dict[str, float | None],
 ) -> Path:
     source_files, feature_rows = _profile_summary(profile_path)
     if source_files is None and normal_manifest_path.is_file():
         source_files = len(pd.read_csv(normal_manifest_path))
     e2_anomaly, e2_physical = _e2_metrics(results)
+    normal_physical = (normal_metrics or {}).get("mean_max_physical_risk")
     table = [
         "| Group | Mean Anomaly Score | Max Anomaly Score | Mean Health Score | Min Health Score |",
         "| ----- | -----------------: | ----------------: | ----------------: | ---------------: |",
@@ -191,7 +291,14 @@ def _write_results_report(
         f"- Normal profile feature rows/windows: {feature_rows if feature_rows is not None else 'not available'}.",
         "- Diagnostic test groups: transition, elevated_load, and pre_emergency_proxy.",
         "- E2 R02 is the main pre-emergency proxy case.",
-        "- Normal group statistics were obtained from the verified Group Comparison table in `artifacts/diagnostics/lab_pipeline_analysis.md`; normal minimum Health Score and group-level physical-risk mean were not available.",
+        "- Group anomaly and mean-health values were obtained from the verified Group Comparison table in `artifacts/diagnostics/lab_pipeline_analysis.md`.",
+        (
+            f"- Normal minimum Health Score and mean maximum physical risk were computed from "
+            f"{normal_metrics['files']} normal manifest files and {normal_metrics['windows']} windows "
+            "using the existing normal profile without retraining."
+            if normal_metrics and normal_metrics.get("windows")
+            else "- Normal manifest diagnostics were unavailable; missing normal metrics remain documented rather than drawn in figures."
+        ),
         "",
         "## 3. Main quantitative result",
         "",
@@ -202,6 +309,18 @@ def _write_results_report(
         "- Anomaly Score increases from normal operation to the pre-emergency proxy group.",
         "- E2 R02 has the strongest statistical deviation among the evaluated test sessions.",
         "- Physical risks remain low compared with statistical anomaly risk.",
+        (
+            f"- Normal-group mean maximum physical risk is {_format(normal_physical)}."
+            if normal_physical is not None
+            else "- Normal-group mean maximum physical risk is not available."
+        ),
+        (
+            f"- Figure 6 includes normal-profile median references for current_rms "
+            f"({_format(normal_medians.get('current_rms'))} A) and torque_rms "
+            f"({_format(normal_medians.get('torque_rms'))} N\u00b7m)."
+            if all(normal_medians.get(name) is not None for name in ("current_rms", "torque_rms"))
+            else "- One or more normal-profile current/torque medians were unavailable."
+        ),
         "- This supports a physical-statistical approach as an early-deviation indicator while retaining physically meaningful limit context.",
         "",
         "## 5. Figure list",
@@ -221,7 +340,6 @@ def _write_results_report(
         "- Normal false positives require further calibration.",
         "- The normal profile should be validated on independent normal data.",
         "- Physical limits should not be tuned only to increase anomaly contrast.",
-        "- Normal group-level physical risk and minimum Health Score were unavailable in the completed comparison artifact.",
         "",
         "## 8. Recommended next steps",
         "",
@@ -235,7 +353,12 @@ def _write_results_report(
     return output_path
 
 
-def _write_readme(output_path: Path, inputs: dict[str, Path]) -> Path:
+def _write_readme(
+    output_path: Path,
+    inputs: dict[str, Path],
+    normal_metrics: dict[str, Any] | None,
+    normal_medians: dict[str, float | None],
+) -> Path:
     command = (
         ".\\.venv\\Scripts\\python.exe -m servo_diagnostic_model.evaluation.article_plots "
         "--summary artifacts/diagnostics/lab_diagnostic_summary.csv "
@@ -266,6 +389,24 @@ def _write_readme(output_path: Path, inputs: dict[str, Path]) -> Path:
     ]
     for name, description in ARTICLE_FIGURES.items():
         lines.extend([f"### {name}", "", description, "", f"![{name}]({name}.png)", ""])
+    lines.extend(
+        [
+            "## Normal references",
+            "",
+            (
+                f"Normal minimum Health Score and mean maximum physical risk were computed from "
+                f"{normal_metrics['files']} manifest files without retraining the profile."
+                if normal_metrics and normal_metrics.get("windows")
+                else "Normal manifest diagnostic metrics were unavailable."
+            ),
+            (
+                "Figure 6 includes normal-profile median reference lines for current_rms and torque_rms."
+                if all(normal_medians.get(name) is not None for name in ("current_rms", "torque_rms"))
+                else "Normal-profile median reference lines were unavailable."
+            ),
+            "",
+        ]
+    )
     output_path.write_text("\n".join(lines), encoding="utf-8")
     return output_path
 
@@ -278,6 +419,9 @@ def build_article_figures(
     normal_profile_path: str | Path,
     output_dir: str | Path,
     session_filter: str = "E2 LOAD MED R02",
+    limits_path: str | Path | None = None,
+    weights_path: str | Path | None = None,
+    thresholds_path: str | Path | None = None,
 ) -> dict[str, str]:
     output = ensure_output_dir(output_dir)
     paths = {
@@ -290,7 +434,25 @@ def build_article_figures(
     summary = load_diagnostic_summary(paths["summary"])
     results = load_diagnostic_results(paths["results"])
     comparison = derive_group_comparison(summary, paths["analysis"])
-    risk_comparison = build_group_risk_comparison(results, comparison)
+    normal_metrics = None
+    if limits_path and weights_path and thresholds_path:
+        normal_metrics = compute_normal_group_metrics(
+            paths["normal_manifest"],
+            paths["normal_profile"],
+            limits_path,
+            weights_path,
+            thresholds_path,
+        )
+        if normal_metrics.get("min_health_score") is not None:
+            comparison.loc[
+                comparison["expected_risk_label"] == "normal", "min_health_score"
+            ] = normal_metrics["min_health_score"]
+    profile = json.loads(paths["normal_profile"].read_text(encoding="utf-8"))
+    normal_medians = {
+        name: extract_profile_median(profile, name)
+        for name in ("current_rms", "torque_rms")
+    }
+    risk_comparison = build_group_risk_comparison(results, comparison, normal_metrics)
     jobs = {
         "fig1_group_anomaly_with_normal": lambda path: plot_group_anomaly_comparison(comparison, path),
         "fig2_group_health_with_normal": lambda path: plot_group_health_comparison(comparison, path),
@@ -300,7 +462,7 @@ def build_article_figures(
             risk_comparison, path
         ),
         "fig6_e2_r02_current_torque": lambda path: plot_current_torque_over_time(
-            results, session_filter, path
+            results, session_filter, path, normal_medians
         ),
     }
     generated: dict[str, str] = {}
@@ -314,8 +476,10 @@ def build_article_figures(
         results,
         paths["normal_profile"],
         paths["normal_manifest"],
+        normal_metrics,
+        normal_medians,
     )
-    readme = _write_readme(output / "README.md", paths)
+    readme = _write_readme(output / "README.md", paths, normal_metrics, normal_medians)
     generated["results_report"] = str(report)
     generated["README"] = str(readme)
     return generated
@@ -342,6 +506,9 @@ def main() -> None:
         args.normal_profile,
         args.output_dir,
         " ".join(args.session),
+        args.limits,
+        args.weights,
+        args.thresholds,
     )
     for name, path in generated.items():
         print(f"{name}: {path}")

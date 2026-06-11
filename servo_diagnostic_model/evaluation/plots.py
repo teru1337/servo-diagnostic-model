@@ -152,17 +152,6 @@ def plot_group_health_comparison(
         label="Minimum Health Score",
         zorder=3,
     )
-    for index, group in enumerate(groups):
-        if pd.isna(grouped.loc[group, "min_health"]):
-            axis.text(
-                index,
-                87,
-                "minimum\nnot available",
-                ha="center",
-                va="top",
-                fontsize=8,
-                color="#444444",
-            )
     axis.set(title="Health Score by experiment group", ylabel="Health Score")
     axis.set_xticks(x, [group.replace("_", "\n") for group in groups])
     axis.set_ylim(0, 100)
@@ -285,7 +274,10 @@ def _feature_series(
 
 
 def plot_current_torque_over_time(
-    results: dict[str, Any], session_filter: str, output_path: str | Path
+    results: dict[str, Any],
+    session_filter: str,
+    output_path: str | Path,
+    normal_medians: dict[str, float | None] | None = None,
 ) -> Path | None:
     _, windows = _selected_windows(results, session_filter)
     if not windows:
@@ -303,6 +295,18 @@ def plot_current_torque_over_time(
         handles += current_axis.plot(
             time, current, color="#277DA1", linewidth=1.7, label=current_name
         )
+        current_median = (normal_medians or {}).get(current_name)
+        if current_median is not None:
+            handles.append(
+                current_axis.axhline(
+                    current_median,
+                    color="#277DA1",
+                    linestyle="--",
+                    linewidth=1.3,
+                    alpha=0.8,
+                    label=f"normal median {current_name}",
+                )
+            )
     current_axis.set(xlabel="Time, s", ylabel="Current, A")
     _style_axis(current_axis)
     torque_axis = current_axis.twinx()
@@ -310,9 +314,27 @@ def plot_current_torque_over_time(
         handles += torque_axis.plot(
             time, torque, color="#F3722C", linewidth=1.7, label=torque_name
         )
-    torque_axis.set_ylabel("Torque, N·m")
+        torque_median = (normal_medians or {}).get(torque_name)
+        if torque_median is not None:
+            handles.append(
+                torque_axis.axhline(
+                    torque_median,
+                    color="#F3722C",
+                    linestyle="--",
+                    linewidth=1.3,
+                    alpha=0.8,
+                    label=f"normal median {torque_name}",
+                )
+            )
+    torque_axis.set_ylabel("Torque, N\u00b7m")
     torque_axis.spines["top"].set_visible(False)
-    current_axis.legend(handles=handles, labels=[line.get_label() for line in handles], frameon=False)
+    current_axis.legend(
+        handles=handles,
+        labels=[line.get_label() for line in handles],
+        frameon=False,
+        loc="upper left",
+        ncol=2,
+    )
     current_axis.set_title("E2 R02 current and torque features over time")
     fig.tight_layout()
     return save_figure(fig, output_path)
@@ -348,7 +370,13 @@ def plot_statistical_vs_physical_risks(
     if not physical:
         warnings.warn("No physical risks are available")
         return None
-    risks["max_physical_risk"] = risks[physical].max(axis=1, skipna=True)
+    computed_physical = risks[physical].max(axis=1, skipna=True)
+    if "max_physical_risk" in risks:
+        risks["max_physical_risk"] = pd.to_numeric(
+            risks["max_physical_risk"], errors="coerce"
+        ).where(risks["max_physical_risk"].notna(), computed_physical)
+    else:
+        risks["max_physical_risk"] = computed_physical
     grouped = risks.groupby("group", sort=False)[
         ["statistical_anomaly", "max_physical_risk"]
     ].mean()
@@ -370,17 +398,6 @@ def plot_statistical_vs_physical_risks(
         label="Mean maximum physical risk",
         color="#277DA1",
     )
-    for index, group in enumerate(groups):
-        if pd.isna(grouped.loc[group, "max_physical_risk"]):
-            axis.text(
-                index + width / 2,
-                0.025,
-                "physical risk\nnot available",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color="#444444",
-            )
     axis.set(
         title="Statistical anomaly risk versus physical risks",
         ylabel="Mean risk, 0..1",
