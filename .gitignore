@@ -13,6 +13,7 @@ build/
 data/lab/**/raw/
 data/lab/**/exports/
 data/lab/metadata
+data/lab/manifests
 
 # Generated diagnostics
 artifacts/diagnostics/

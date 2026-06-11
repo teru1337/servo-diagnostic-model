@@ -66,6 +66,29 @@ def extract_feature_rows_from_csv_files(
     return feature_rows
 
 
+def read_csv_manifest(manifest_path: CsvPath) -> list[str]:
+    """Read telemetry CSV paths from a manifest's required ``path`` column."""
+
+    path = Path(manifest_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"CSV manifest not found: {path}")
+
+    try:
+        manifest = pd.read_csv(path, dtype=str, keep_default_na=False)
+    except pd.errors.EmptyDataError as exc:
+        raise ValueError(f"CSV manifest is empty: {path}") from exc
+    except (OSError, pd.errors.ParserError, UnicodeError) as exc:
+        raise ValueError(f"Failed to read CSV manifest '{path}': {exc}") from exc
+
+    if "path" not in manifest.columns:
+        raise ValueError(f"CSV manifest must contain a 'path' column: {path}")
+
+    csv_paths = [str(value).strip() for value in manifest["path"] if str(value).strip()]
+    if not csv_paths:
+        raise ValueError(f"CSV manifest contains no CSV paths: {path}")
+    return csv_paths
+
+
 def _load_and_prepare_csv(csv_path: CsvPath) -> pd.DataFrame:
     try:
         dataframe = load_telemetry(csv_path)
@@ -204,6 +227,24 @@ def fit_normal_profile_from_csv_files(
     )
 
 
+def fit_normal_profile_from_manifest(
+    manifest_path: CsvPath,
+    output_path: CsvPath,
+    thresholds: dict[str, Any],
+    feature_names: list[str] | None = None,
+    min_count: int = 5,
+) -> dict[str, Any]:
+    """Fit and save a normal profile from CSV paths listed in a manifest."""
+
+    return fit_normal_profile_from_csv_files(
+        read_csv_manifest(manifest_path),
+        output_path,
+        thresholds,
+        feature_names,
+        min_count,
+    )
+
+
 def _positive_float(
     thresholds: dict[str, Any], key: str, default: float
 ) -> float:
@@ -262,6 +303,12 @@ def _main() -> None:
         help="Glob pattern for CSV inputs. May be repeated.",
     )
     parser.add_argument(
+        "--manifest",
+        action="append",
+        default=[],
+        help="CSV manifest containing a path column. May be repeated.",
+    )
+    parser.add_argument(
         "--thresholds",
         default="servo_diagnostic_model/config/thresholds.json",
         help="Path to thresholds JSON.",
@@ -273,7 +320,15 @@ def _main() -> None:
     if not isinstance(thresholds, dict):
         raise ValueError("Thresholds file must contain a JSON object.")
     output_path = args.paths[-1]
-    csv_paths = _resolve_csv_paths(args.paths[:-1], args.input_glob)
+    manifest_csv_paths = [
+        csv_path
+        for manifest_path in args.manifest
+        for csv_path in read_csv_manifest(manifest_path)
+    ]
+    csv_paths = _resolve_csv_paths(
+        [*args.paths[:-1], *manifest_csv_paths],
+        args.input_glob,
+    )
     profile = fit_normal_profile_from_csv_files(
         csv_paths,
         output_path,

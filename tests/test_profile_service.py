@@ -11,6 +11,8 @@ from servo_diagnostic_model.api.profile_service import (
     extract_feature_rows_from_csv_files,
     fit_normal_profile_from_csv,
     fit_normal_profile_from_csv_files,
+    fit_normal_profile_from_manifest,
+    read_csv_manifest,
 )
 from servo_diagnostic_model.model.statistical_profile import load_profile
 
@@ -65,6 +67,12 @@ def _write_telemetry_csv(
     path.write_text("\n".join(rows), encoding="utf-8")
 
 
+def _write_manifest(path, csv_paths):
+    rows = ["path,comment"]
+    rows.extend(f"{csv_path},normal laboratory telemetry" for csv_path in csv_paths)
+    path.write_text("\n".join(rows), encoding="utf-8")
+
+
 def test_extract_feature_rows_from_csv_returns_rows(tmp_path):
     csv_path = tmp_path / "normal.csv"
     _write_telemetry_csv(csv_path)
@@ -115,6 +123,81 @@ def test_fit_normal_profile_from_two_csv_files(tmp_path):
     assert profile["meta"]["window_count"] == 12
     assert profile["meta"]["normal_row_count"] == 12
     assert profile["meta"]["profile_feature_count"] == len(profile["global"])
+
+
+def test_read_csv_manifest_reads_path_column(tmp_path):
+    first = tmp_path / "normal-1.csv"
+    second = tmp_path / "normal-2.csv"
+    manifest_path = tmp_path / "normal_profile_files.csv"
+    _write_manifest(manifest_path, [first, second])
+
+    assert read_csv_manifest(manifest_path) == [str(first), str(second)]
+
+
+def test_missing_manifest_raises_clear_error(tmp_path):
+    with pytest.raises(FileNotFoundError, match="CSV manifest not found"):
+        read_csv_manifest(tmp_path / "missing.csv")
+
+
+def test_manifest_without_path_column_fails(tmp_path):
+    manifest_path = tmp_path / "invalid.csv"
+    manifest_path.write_text("file,comment\nnormal.csv,input\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="'path' column"):
+        read_csv_manifest(manifest_path)
+
+
+@pytest.mark.parametrize("contents", ["", "path,comment\n"])
+def test_empty_manifest_fails(tmp_path, contents):
+    manifest_path = tmp_path / "empty.csv"
+    manifest_path.write_text(contents, encoding="utf-8")
+
+    with pytest.raises(ValueError, match="empty|no CSV paths"):
+        read_csv_manifest(manifest_path)
+
+
+def test_fit_normal_profile_from_manifest_with_two_csv_files(tmp_path):
+    first = tmp_path / "normal-1.csv"
+    second = tmp_path / "normal-2.csv"
+    manifest_path = tmp_path / "normal_profile_files.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(first)
+    _write_telemetry_csv(second)
+    _write_manifest(manifest_path, [first, second])
+
+    profile = fit_normal_profile_from_manifest(
+        manifest_path, output_path, THRESHOLDS, min_count=5
+    )
+
+    assert profile["meta"]["source_file_count"] == 2
+    assert profile["meta"]["normal_row_count"] == 12
+    assert load_profile(str(output_path)) == profile
+
+
+def test_manifest_with_missing_csv_path_raises_clear_error(tmp_path):
+    manifest_path = tmp_path / "normal_profile_files.csv"
+    _write_manifest(manifest_path, [tmp_path / "missing.csv"])
+
+    with pytest.raises(FileNotFoundError, match="Telemetry file not found"):
+        fit_normal_profile_from_manifest(
+            manifest_path,
+            tmp_path / "normal_profile.json",
+            THRESHOLDS,
+        )
+
+
+def test_manifest_with_no_normal_rows_raises_clear_error(tmp_path):
+    csv_path = tmp_path / "faulted.csv"
+    manifest_path = tmp_path / "normal_profile_files.csv"
+    _write_telemetry_csv(csv_path, error_code=42)
+    _write_manifest(manifest_path, [csv_path])
+
+    with pytest.raises(ValueError, match="No valid normal feature rows"):
+        fit_normal_profile_from_manifest(
+            manifest_path,
+            tmp_path / "normal_profile.json",
+            THRESHOLDS,
+        )
 
 
 def test_fit_normal_profile_from_csv_writes_json_file(tmp_path):
@@ -255,6 +338,32 @@ def test_input_glob_matches_multiple_files(tmp_path, monkeypatch, capsys):
             "profile_service",
             "--input-glob",
             str(tmp_path / "*.csv"),
+            str(output_path),
+        ],
+    )
+
+    _main()
+
+    profile = load_profile(str(output_path))
+    assert profile["meta"]["source_file_count"] == 2
+    assert "2 files" in capsys.readouterr().out
+
+
+def test_manifest_cli_fits_multiple_files(tmp_path, monkeypatch, capsys):
+    first = tmp_path / "normal-1.csv"
+    second = tmp_path / "normal-2.csv"
+    manifest_path = tmp_path / "normal_profile_files.csv"
+    output_path = tmp_path / "normal_profile.json"
+    _write_telemetry_csv(first)
+    _write_telemetry_csv(second)
+    _write_manifest(manifest_path, [first, second])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "profile_service",
+            "--manifest",
+            str(manifest_path),
             str(output_path),
         ],
     )
