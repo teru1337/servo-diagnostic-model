@@ -1,0 +1,427 @@
+{
+  "selected_threshold": 0.62,
+  "target_fpr_reached": true,
+  "threshold_only_sufficient": true,
+  "reason": "A threshold reaches the 5-10% normal warning false-positive target.",
+  "selected_metrics": {
+    "threshold": 0.62,
+    "normal_windows": 1161,
+    "normal_mean_anomaly": 0.5387863650900402,
+    "normal_max_anomaly": 0.7888308527280953,
+    "normal_warning_or_higher_windows": 92,
+    "normal_warning_or_higher_rate": 0.07924203273040482,
+    "normal_critical_windows": 1,
+    "normal_critical_rate": 0.0008613264427217916,
+    "e2_r02_max_anomaly": 0.8577105205491309,
+    "e2_r02_mean_anomaly": 0.8005697924512718,
+    "e2_r02_detection_rate_above_threshold": 1.0,
+    "e2_r02_rank_by_max_anomaly": 1,
+    "e2_r02_rank_by_mean_anomaly": 1,
+    "ordering_holds": true,
+    "normal_validation_windows": 1161,
+    "normal_validation_mean_anomaly": 0.5387863650900402,
+    "normal_validation_max_anomaly": 0.7888308527280953,
+    "normal_validation_detection_windows_above_threshold": 92,
+    "normal_validation_detection_rate_above_threshold": 0.07924203273040482,
+    "transition_windows": 2347,
+    "transition_mean_anomaly": 0.5744498900027208,
+    "transition_max_anomaly": 0.8350498651288669,
+    "transition_detection_windows_above_threshold": 695,
+    "transition_detection_rate_above_threshold": 0.29612270984235195,
+    "elevated_load_windows": 1594,
+    "elevated_load_mean_anomaly": 0.6318154364098832,
+    "elevated_load_max_anomaly": 0.7716941500724187,
+    "elevated_load_detection_windows_above_threshold": 1035,
+    "elevated_load_detection_rate_above_threshold": 0.6493099121706399,
+    "pre_emergency_proxy_windows": 232,
+    "pre_emergency_proxy_mean_anomaly": 0.7902670912503377,
+    "pre_emergency_proxy_max_anomaly": 0.8577105205491309,
+    "pre_emergency_proxy_detection_windows_above_threshold": 232,
+    "pre_emergency_proxy_detection_rate_above_threshold": 1.0,
+    "mean_gap_transition_minus_normal": 0.035663524912680655,
+    "mean_gap_elevated_minus_normal": 0.09302907131984306,
+    "mean_gap_pre_emergency_minus_normal": 0.2514807261602975,
+    "mean_gap_e2_minus_transition": 0.22611990244855096,
+    "mean_gap_e2_minus_elevated_load": 0.16875435604138855,
+    "target_fpr_match": true,
+    "acceptable_critical_fpr": true,
+    "e2_still_detected": true,
+    "recommended_candidate": true
+  },
+  "current_anomaly_warning": 0.5,
+  "normal_false_positive_feature_analysis": {
+    "threshold": 0.62,
+    "false_positive_windows": 92,
+    "top_features": [
+      {
+        "feature": "position_max",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "position_min",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_max",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_mean",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_min",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_min",
+        "windows": 92,
+        "mean_feature_score": 0.8804236797081885,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_rms",
+        "windows": 92,
+        "mean_feature_score": 0.8345979464178112,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_max",
+        "windows": 92,
+        "mean_feature_score": 0.8037463750292339,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "abs_velocity_max",
+        "windows": 92,
+        "mean_feature_score": 0.7910950633556668,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "position_delta",
+        "windows": 92,
+        "mean_feature_score": 0.7832814359683631,
+        "max_feature_score": 1.0
+      }
+    ],
+    "all_features": [
+      {
+        "feature": "position_max",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "position_min",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_max",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_mean",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_min",
+        "windows": 92,
+        "mean_feature_score": 1.0,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_min",
+        "windows": 92,
+        "mean_feature_score": 0.8804236797081885,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_rms",
+        "windows": 92,
+        "mean_feature_score": 0.8345979464178112,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_max",
+        "windows": 92,
+        "mean_feature_score": 0.8037463750292339,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "abs_velocity_max",
+        "windows": 92,
+        "mean_feature_score": 0.7910950633556668,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "position_delta",
+        "windows": 92,
+        "mean_feature_score": 0.7832814359683631,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_std",
+        "windows": 92,
+        "mean_feature_score": 0.7809710716567403,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "position_std",
+        "windows": 92,
+        "mean_feature_score": 0.7716811833682631,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "temp_max",
+        "windows": 92,
+        "mean_feature_score": 0.6630434782608695,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "temp_mean",
+        "windows": 92,
+        "mean_feature_score": 0.6630434782608695,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "temp_min",
+        "windows": 92,
+        "mean_feature_score": 0.6630434782608695,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_std",
+        "windows": 92,
+        "mean_feature_score": 0.5462262534370443,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "current_std",
+        "windows": 92,
+        "mean_feature_score": 0.5428126374169103,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "torque_std",
+        "windows": 92,
+        "mean_feature_score": 0.47146217717626027,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "accel_mean",
+        "windows": 92,
+        "mean_feature_score": 0.4452472605616405,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_min",
+        "windows": 92,
+        "mean_feature_score": 0.4172101449275362,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "torque_max",
+        "windows": 92,
+        "mean_feature_score": 0.41702898550724643,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_max",
+        "windows": 92,
+        "mean_feature_score": 0.40839184538708195,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "current_max",
+        "windows": 92,
+        "mean_feature_score": 0.40036231884057977,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "torque_min",
+        "windows": 92,
+        "mean_feature_score": 0.3923913043478258,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "torque_mean",
+        "windows": 92,
+        "mean_feature_score": 0.39072997714740376,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "current_min",
+        "windows": 92,
+        "mean_feature_score": 0.38478260869565234,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "current_mean",
+        "windows": 92,
+        "mean_feature_score": 0.3671179452613436,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "velocity_mean",
+        "windows": 92,
+        "mean_feature_score": 0.34684297422492905,
+        "max_feature_score": 0.6722559740785743
+      },
+      {
+        "feature": "abs_accel_max",
+        "windows": 92,
+        "mean_feature_score": 0.3451589854105353,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "voltage_std",
+        "windows": 92,
+        "mean_feature_score": 0.3251580887116179,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "torque_abs_max",
+        "windows": 92,
+        "mean_feature_score": 0.26956521739130423,
+        "max_feature_score": 1.0
+      },
+      {
+        "feature": "current_abs_max",
+        "windows": 92,
+        "mean_feature_score": 0.2260869565217393,
+        "max_feature_score": 0.5000000000000003
+      },
+      {
+        "feature": "torque_rms",
+        "windows": 92,
+        "mean_feature_score": 0.20322400328330037,
+        "max_feature_score": 0.4100541431478402
+      },
+      {
+        "feature": "current_rms",
+        "windows": 92,
+        "mean_feature_score": 0.18366796173890543,
+        "max_feature_score": 0.43989306435004155
+      },
+      {
+        "feature": "voltage_range",
+        "windows": 92,
+        "mean_feature_score": 0.13814876145633878,
+        "max_feature_score": 0.5101806755353275
+      },
+      {
+        "feature": "hold_ratio",
+        "windows": 92,
+        "mean_feature_score": 0.0,
+        "max_feature_score": 0.0
+      },
+      {
+        "feature": "motion_ratio",
+        "windows": 92,
+        "mean_feature_score": 0.0,
+        "max_feature_score": 0.0
+      },
+      {
+        "feature": "temp_slope",
+        "windows": 92,
+        "mean_feature_score": 0.0,
+        "max_feature_score": 0.0
+      },
+      {
+        "feature": "temp_std",
+        "windows": 92,
+        "mean_feature_score": 0.0,
+        "max_feature_score": 0.0
+      }
+    ],
+    "motion_phase_counts": {
+      "acceleration": 11,
+      "braking": 9,
+      "moving": 72
+    },
+    "profile_used_counts": {
+      "by_motion_phase.acceleration": 11,
+      "by_motion_phase.braking": 9,
+      "by_motion_phase.moving": 72
+    }
+  },
+  "e2_r02_top_anomaly_features": [
+    {
+      "feature": "current_abs_max",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "current_max",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "current_rms",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "torque_abs_max",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "torque_max",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "torque_rms",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "voltage_mean",
+      "windows": 116,
+      "mean_feature_score": 1.0,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "torque_mean",
+      "windows": 116,
+      "mean_feature_score": 0.9987407666405219,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "current_mean",
+      "windows": 116,
+      "mean_feature_score": 0.9985735769626336,
+      "max_feature_score": 1.0
+    },
+    {
+      "feature": "voltage_max",
+      "windows": 116,
+      "mean_feature_score": 0.9969929824655805,
+      "max_feature_score": 1.0
+    }
+  ],
+  "production_changes_applied": false
+}
