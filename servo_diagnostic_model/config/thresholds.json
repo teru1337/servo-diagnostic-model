@@ -6,7 +6,7 @@
   "health_observation": 70,
   "health_warning": 50,
   "anomaly_observation": 0.3,
-  "anomaly_warning": 0.5,
+  "anomaly_warning": 0.62,
   "anomaly_critical": 0.75,
   "risk_observation": 0.5,
   "risk_warning": 0.75,

@@ -1,0 +1,11 @@
+feature,windows,mean_feature_score,max_feature_score
+current_abs_max,116,1.0,1.0
+current_max,116,1.0,1.0
+current_rms,116,1.0,1.0
+torque_abs_max,116,1.0,1.0
+torque_max,116,1.0,1.0
+torque_rms,116,1.0,1.0
+voltage_mean,116,1.0,1.0
+torque_mean,116,0.9987407666405219,1.0
+current_mean,116,0.9985735769626336,1.0
+voltage_max,116,0.9969929824655805,1.0
