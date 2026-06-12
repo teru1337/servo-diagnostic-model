@@ -327,6 +327,12 @@ risk `1.0`, and `fault_flag=True` produces statusword risk `1.0`. Missing
 critical values are reflected through data-quality behavior rather than fake
 physical risk values.
 
+Temperature slope risk is gated while `temp_max < temp_safe`. The configured
+safe-temperature ceiling prevents slope alone from becoming critical, and a
+stricter ceiling applies when `temp_max - temp_min` is within the configured
+quantized temperature range. Absolute temperature risk is unchanged, and
+temperature slope risk remains unrestricted at or above `temp_safe`.
+
 Starter limits are stored in `servo_diagnostic_model/config/limits.json`.
 They have not been calibrated against verified real hardware parameters.
 

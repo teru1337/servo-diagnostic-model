@@ -142,6 +142,53 @@ def test_temperature_slope_risk():
     assert calculate_temperature_risk(features, limits) == 0.5
 
 
+@pytest.mark.parametrize(
+    ("temp_mean", "temp_slope"),
+    [
+        (48.45, 0.262103),
+        (48.63, 0.216368),
+    ],
+)
+def test_quantized_safe_temperature_slope_is_not_critical(
+    limits, temp_mean, temp_slope
+):
+    features = {
+        "temp_min": 48.0,
+        "temp_max": 49.0,
+        "temp_mean": temp_mean,
+        "temp_slope": temp_slope,
+    }
+
+    risk = calculate_temperature_risk(features, limits)
+
+    assert risk == pytest.approx(limits["temp_slope_quantized_risk_cap"])
+    assert risk <= 0.5
+
+
+def test_safe_temperature_high_slope_uses_safe_risk_cap(limits):
+    features = {
+        "temp_min": 45.0,
+        "temp_max": 50.0,
+        "temp_mean": 48.0,
+        "temp_slope": limits["temp_slope_limit"] * 2.0,
+    }
+
+    assert calculate_temperature_risk(features, limits) == pytest.approx(
+        limits["temp_slope_safe_risk_cap"]
+    )
+
+
+def test_unsafe_temperature_with_high_slope_remains_high(limits):
+    features = {
+        "temp_min": 54.0,
+        "temp_max": limits["temp_safe"] + 15.0,
+        "temp_mean": limits["temp_safe"] + 10.0,
+        "temp_slope": limits["temp_slope_limit"] * 2.0,
+    }
+
+    assert calculate_temperature_risk(features, limits) >= 0.75
+
+
 def test_error_risk():
     assert calculate_error_risk({"error_flag": True}) == 1.0
     assert calculate_error_risk({"error_flag": False}) == 0.0

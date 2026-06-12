@@ -17,6 +17,7 @@ from servo_diagnostic_model.model.health_score import (
     apply_hard_limits,
     calculate_health_score,
 )
+from servo_diagnostic_model.model.physical_risks import calculate_temperature_risk
 
 
 @pytest.fixture
@@ -79,6 +80,35 @@ def test_hard_limit_by_voltage_risk():
 
 def test_hard_limit_by_data_quality_risk():
     assert apply_hard_limits(100.0, {"data_quality": 1.0}, {}) == 60.0
+
+
+def test_quantized_safe_temperature_slope_does_not_force_critical(
+    weights, thresholds
+):
+    limits = json.loads(
+        Path("servo_diagnostic_model/config/limits.json").read_text(encoding="utf-8")
+    )
+    features = {
+        "temp_min": 48.0,
+        "temp_max": 49.0,
+        "temp_mean": 48.45,
+        "temp_slope": 0.262103,
+        "error_flag": False,
+        "fault_flag": False,
+    }
+    temperature_risk = calculate_temperature_risk(features, limits)
+    risks = {key: 0.0 for key in weights}
+    risks["temperature"] = temperature_risk
+    risks["statistical_anomaly"] = 0.420127
+
+    health_score = calculate_health_score(risks, weights, features)
+    state = classify_state(
+        health_score, risks["statistical_anomaly"], risks, thresholds, features
+    )
+
+    assert temperature_risk == pytest.approx(0.3)
+    assert health_score > 50.0
+    assert state != "critical"
 
 
 def test_classifier_normal(thresholds):

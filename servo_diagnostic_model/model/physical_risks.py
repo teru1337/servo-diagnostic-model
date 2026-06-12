@@ -137,6 +137,7 @@ def calculate_temperature_risk(
         if _is_number(slope)
         else 0.0
     )
+    slope_risk = _gate_safe_temperature_slope_risk(slope_risk, features, limits)
     return clamp(max(level, slope_risk))
 
 
@@ -201,6 +202,34 @@ def _ratio_risk(value: Any, limit: Any) -> float:
     if not _is_number(value) or not _is_number(limit) or limit <= 0:
         return 0.0
     return clamp(safe_divide(abs(float(value)), float(limit)))
+
+
+def _gate_safe_temperature_slope_risk(
+    slope_risk: float,
+    features: dict[str, Any],
+    limits: dict[str, Any],
+) -> float:
+    temp_max = features.get("temp_max")
+    temp_safe = limits.get("temp_safe")
+    if not _is_number(temp_max) or not _is_number(temp_safe) or temp_max >= temp_safe:
+        return clamp(slope_risk)
+
+    safe_cap = limits.get("temp_slope_safe_risk_cap")
+    if _is_number(safe_cap):
+        slope_risk = min(slope_risk, clamp(float(safe_cap)))
+
+    temp_min = features.get("temp_min")
+    quantized_range = limits.get("temp_quantized_range_C")
+    quantized_cap = limits.get("temp_slope_quantized_risk_cap")
+    if (
+        _is_number(temp_min)
+        and _is_number(quantized_range)
+        and quantized_range >= 0
+        and _is_number(quantized_cap)
+        and float(temp_max) - float(temp_min) <= float(quantized_range)
+    ):
+        slope_risk = min(slope_risk, clamp(float(quantized_cap)))
+    return clamp(slope_risk)
 
 
 def _missing_critical_features_risk(features: dict[str, Any]) -> float:
