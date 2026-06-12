@@ -7,12 +7,16 @@ import pandas as pd
 from servo_diagnostic_model.evaluation.article_plots import (
     ARTICLE_FIGURES,
     build_article_figures,
+    build_threshold_calibrated_article_figures,
     compute_group_metrics_from_results,
     compute_normal_group_metrics,
     derive_group_comparison,
     extract_profile_median,
 )
-from servo_diagnostic_model.evaluation.plots import plot_current_torque_over_time
+from servo_diagnostic_model.evaluation.plots import (
+    plot_current_torque_over_time,
+    plot_scores_over_time,
+)
 
 
 def _summary() -> pd.DataFrame:
@@ -207,6 +211,86 @@ def test_current_torque_plot_adds_profile_reference_lines(tmp_path: Path, monkey
 
     assert "normal median current_rms" in labels
     assert "normal median torque_rms" in labels
+
+
+def test_scores_plot_adds_calibrated_warning_threshold(tmp_path: Path, monkeypatch) -> None:
+    labels = []
+
+    def inspect_figure(fig, output_path):
+        labels.extend(line.get_label() for axis in fig.axes for line in axis.lines)
+        return Path(output_path)
+
+    monkeypatch.setattr(
+        "servo_diagnostic_model.evaluation.plots.save_figure", inspect_figure
+    )
+    plot_scores_over_time(
+        _results(), "E2 LOAD MED R02", tmp_path / "scores.png", 0.62
+    )
+
+    assert "warning threshold = 0.62" in labels
+
+
+def test_build_threshold_calibrated_article_figures(tmp_path: Path) -> None:
+    validation = tmp_path / "validation"
+    calibration = tmp_path / "calibration"
+    output = tmp_path / "article"
+    validation.mkdir()
+    calibration.mkdir()
+    normal = _results()
+    normal["files"][0]["manifest"]["risk_label"] = "normal"
+    (validation / "normal_holdout_diagnostic_results.json").write_text(
+        json.dumps(normal["files"]), encoding="utf-8"
+    )
+    test_files = []
+    for group in ("transition", "elevated_load", "pre_emergency_proxy"):
+        entry = json.loads(json.dumps(_results()["files"][0]))
+        entry["manifest"]["risk_label"] = group
+        test_files.append(entry)
+    (validation / "test_with_holdout_profile_results.json").write_text(
+        json.dumps(test_files), encoding="utf-8"
+    )
+    (validation / "normal_profile_holdout_train.json").write_text(
+        json.dumps(
+            {
+                "global": {
+                    "current_rms": {"median": 0.08},
+                    "torque_rms": {"median": 0.04},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (validation / "holdout_validation_report.md").write_text("# Holdout\n", encoding="utf-8")
+    selected = {
+        "normal_windows": 3,
+        "normal_mean_anomaly": 0.75,
+        "normal_max_anomaly": 0.8,
+        "normal_warning_or_higher_rate": 0.08,
+        "normal_critical_rate": 0.0,
+        "e2_r02_max_anomaly": 0.8,
+        "e2_r02_mean_anomaly": 0.75,
+        "e2_r02_detection_rate_above_threshold": 1.0,
+        "e2_r02_rank_by_max_anomaly": 1,
+        "e2_r02_rank_by_mean_anomaly": 1,
+    }
+    (calibration / "calibration_recommendation.json").write_text(
+        json.dumps({"selected_metrics": selected}), encoding="utf-8"
+    )
+    (calibration / "group_separation_summary.csv").write_text(
+        "group,mean_anomaly\nnormal_validation,0.75\n", encoding="utf-8"
+    )
+    thresholds = tmp_path / "thresholds.json"
+    thresholds.write_text(json.dumps({"anomaly_warning": 0.62}), encoding="utf-8")
+
+    generated = build_threshold_calibrated_article_figures(
+        validation, calibration, thresholds, output
+    )
+
+    assert len(generated) == 8
+    assert all(Path(path).is_file() for path in generated.values())
+    report = (output / "results_report.md").read_text(encoding="utf-8")
+    assert "`anomaly_warning = 0.62`" in report
+    assert "| normal_validation |" in report
 
 
 def test_article_plotting_module_does_not_import_forbidden_libraries() -> None:

@@ -18,9 +18,16 @@ import numpy as np
 import pandas as pd
 
 
-GROUP_ORDER = ["normal", "transition", "elevated_load", "pre_emergency_proxy"]
+GROUP_ORDER = [
+    "normal",
+    "normal_validation",
+    "transition",
+    "elevated_load",
+    "pre_emergency_proxy",
+]
 GROUP_COLORS = {
     "normal": "#4C956C",
+    "normal_validation": "#4C956C",
     "transition": "#E9C46A",
     "elevated_load": "#F4A261",
     "pre_emergency_proxy": "#D1495B",
@@ -198,7 +205,10 @@ def _time_axis(windows: list[dict[str, Any]]) -> np.ndarray:
 
 
 def plot_scores_over_time(
-    results: dict[str, Any], session_filter: str, output_path: str | Path
+    results: dict[str, Any],
+    session_filter: str,
+    output_path: str | Path,
+    anomaly_warning_threshold: float | None = None,
 ) -> Path | None:
     _, windows = _selected_windows(results, session_filter)
     if not windows:
@@ -213,6 +223,14 @@ def plot_scores_over_time(
     )
     fig, axes = plt.subplots(2, 1, figsize=(10, 6.8), sharex=True)
     axes[0].plot(time, anomaly, color="#D1495B", linewidth=1.8, label="Anomaly Score")
+    if anomaly_warning_threshold is not None:
+        axes[0].axhline(
+            anomaly_warning_threshold,
+            color="#222222",
+            linestyle="--",
+            linewidth=1.4,
+            label=f"warning threshold = {anomaly_warning_threshold:.2f}",
+        )
     axes[0].set_ylabel("Anomaly Score")
     axes[0].legend(frameon=False)
     axes[1].plot(time, health, color="#277DA1", linewidth=1.8, label="Health Score")
@@ -220,7 +238,7 @@ def plot_scores_over_time(
     axes[1].legend(frameon=False)
     for axis in axes:
         _style_axis(axis)
-    fig.suptitle("E2 R02 diagnostic scores over time")
+    fig.suptitle("E2 R02 pre-emergency proxy scores over time")
     fig.tight_layout()
     return save_figure(fig, output_path)
 

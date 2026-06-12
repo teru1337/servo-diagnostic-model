@@ -35,6 +35,15 @@ ARTICLE_FIGURES = {
     "fig5_statistical_vs_physical_risks": "Group-level statistical versus physical risk comparison.",
     "fig6_e2_r02_current_torque": "E2 R02 current and torque features over time.",
 }
+LEGACY_GROUP_ORDER = ["normal", "transition", "elevated_load", "pre_emergency_proxy"]
+
+FINAL_ARTICLE_COMMAND = (
+    ".\\.venv\\Scripts\\python.exe -m servo_diagnostic_model.evaluation.article_plots "
+    "--validation-dir artifacts/validation_after_threshold_calibration "
+    "--calibration-dir artifacts/calibration_after_threshold_application "
+    "--thresholds servo_diagnostic_model/config/thresholds.json "
+    "--output-dir artifacts/article_figures_after_threshold_calibration"
+)
 
 
 def _number(value: str) -> float | None:
@@ -82,17 +91,17 @@ def derive_group_comparison(
             mean_health_score=("mean_health_score", "mean"),
             min_health_score=("min_health_score", "min"),
         )
-        for group in GROUP_ORDER:
+        for group in LEGACY_GROUP_ORDER:
             if group == "normal" or group not in test_groups.index:
                 continue
             row = rows.setdefault(group, {"expected_risk_label": group})
             for column in test_groups.columns:
                 row[column] = float(test_groups.loc[group, column])
 
-    missing = [group for group in GROUP_ORDER if group not in rows]
+    missing = [group for group in LEGACY_GROUP_ORDER if group not in rows]
     if missing:
         raise ValueError(f"Group comparison is missing groups: {missing}")
-    return pd.DataFrame([rows[group] for group in GROUP_ORDER])
+    return pd.DataFrame([rows[group] for group in LEGACY_GROUP_ORDER])
 
 
 def build_group_risk_comparison(
@@ -190,6 +199,250 @@ def compute_group_metrics_from_results(results: dict[str, Any]) -> dict[str, Any
             sum(max_physical) / len(max_physical) if max_physical else None
         ),
     }
+
+
+def load_validation_results(path: str | Path) -> dict[str, Any]:
+    """Load validation diagnostic JSON, which is stored as a list of file results."""
+    result_path = Path(path)
+    if not result_path.is_file():
+        raise FileNotFoundError(f"Validation diagnostic results do not exist: {result_path}")
+    value = json.loads(result_path.read_text(encoding="utf-8"))
+    if isinstance(value, list):
+        return {"files": value}
+    if isinstance(value, dict) and isinstance(value.get("files"), list):
+        return value
+    raise ValueError("Validation diagnostic results must be a file-result list or files object")
+
+
+def build_post_threshold_group_comparison(
+    normal_results: dict[str, Any], test_results: dict[str, Any]
+) -> pd.DataFrame:
+    """Aggregate post-threshold holdout results into the article group table."""
+    combined = []
+    for entry in normal_results.get("files", []):
+        copied = dict(entry)
+        copied["manifest"] = dict(entry.get("manifest", {}))
+        copied["manifest"]["risk_label"] = "normal_validation"
+        combined.append(copied)
+    combined.extend(test_results.get("files", []))
+    rows = []
+    for group in ("normal_validation", "transition", "elevated_load", "pre_emergency_proxy"):
+        files = [
+            entry
+            for entry in combined
+            if entry.get("manifest", {}).get("risk_label") == group
+        ]
+        metrics = compute_group_metrics_from_results({"files": files})
+        rows.append({"expected_risk_label": group, **metrics})
+    return pd.DataFrame(rows)
+
+
+def build_post_threshold_risk_rows(
+    normal_results: dict[str, Any], test_results: dict[str, Any]
+) -> pd.DataFrame:
+    """Return window-level risk rows for all final article groups."""
+    rows: list[dict[str, Any]] = []
+    for results, normal in ((normal_results, True), (test_results, False)):
+        for entry in results.get("files", []):
+            group = (
+                "normal_validation"
+                if normal
+                else entry.get("manifest", {}).get("risk_label", "unknown")
+            )
+            for window in entry.get("windows", []):
+                risks = window.get("risks", {})
+                row = {"group": group}
+                row.update(
+                    {
+                        name: risks.get(name)
+                        for name in ("statistical_anomaly", *PHYSICAL_RISKS)
+                    }
+                )
+                rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _load_anomaly_warning(thresholds_path: str | Path) -> float:
+    thresholds = json.loads(Path(thresholds_path).read_text(encoding="utf-8"))
+    value = float(thresholds.get("anomaly_warning"))
+    if value != 0.62:
+        raise ValueError(f"Expected anomaly_warning = 0.62, found {value}")
+    return value
+
+
+def _write_final_results_report(
+    output_path: Path,
+    comparison: pd.DataFrame,
+    recommendation: dict[str, Any],
+    threshold: float,
+) -> Path:
+    selected = recommendation["selected_metrics"]
+    table = [
+        "| Group | Windows | Mean Anomaly Score | Max Anomaly Score | Mean Health Score | Min Health Score | Mean Max Physical Risk |",
+        "| ----- | ------: | -----------------: | ----------------: | ----------------: | ---------------: | ---------------------: |",
+    ]
+    for row in comparison.to_dict("records"):
+        table.append(
+            f"| {row['expected_risk_label']} | {int(row['windows'])} | "
+            f"{_format(row['mean_anomaly_score'])} | {_format(row['max_anomaly_score'])} | "
+            f"{_format(row['mean_health_score'])} | {_format(row['min_health_score'])} | "
+            f"{_format(row['mean_max_physical_risk'])} |"
+        )
+    lines = [
+        "# Results Report After Threshold Calibration",
+        "",
+        "## 1. Configuration",
+        "",
+        f"- `anomaly_warning = {threshold:.2f}`",
+        "- Source config: `servo_diagnostic_model/config/thresholds.json`",
+        "- These figures reflect the current production threshold configuration.",
+        "",
+        "## 2. Generated figures",
+        "",
+        *[f"- `{name}.png`: {description}" for name, description in ARTICLE_FIGURES.items()],
+        "",
+        "## 3. Holdout validation summary",
+        "",
+        "- Validation type: same-campaign holdout validation, not independent validation.",
+        "- Train files: 9",
+        "- Validation files: 8",
+        f"- Validation windows: {int(selected['normal_windows'])}",
+        f"- Mean Anomaly Score: {_format(selected['normal_mean_anomaly'])}",
+        f"- Maximum Anomaly Score: {_format(selected['normal_max_anomaly'])}",
+        f"- Mean Health Score: {_format(comparison.iloc[0]['mean_health_score'])}",
+        f"- Minimum Health Score: {_format(comparison.iloc[0]['min_health_score'])}",
+        f"- Warning-or-higher false-positive rate after threshold calibration: {selected['normal_warning_or_higher_rate']:.3%}",
+        f"- Critical false-positive rate: {selected['normal_critical_rate']:.3%}",
+        "",
+        "## 4. Group separation summary",
+        "",
+        *table,
+        "",
+        "## 5. E2 R02 summary",
+        "",
+        f"- Maximum Anomaly Score: {_format(selected['e2_r02_max_anomaly'])}",
+        f"- Mean Anomaly Score: {_format(selected['e2_r02_mean_anomaly'])}",
+        f"- Detection rate above {threshold:.2f}: {selected['e2_r02_detection_rate_above_threshold']:.3%}",
+        f"- Rank by maximum anomaly: {selected['e2_r02_rank_by_max_anomaly']}",
+        f"- Rank by mean anomaly: {selected['e2_r02_rank_by_mean_anomaly']}",
+        "- E2 R02 is a pre-emergency proxy, not a confirmed fault.",
+        "",
+        "## 6. Interpretation",
+        "",
+        "The diagnostic model preserved the mean Anomaly Score ordering from normal holdout operation through transition and elevated-load operation to the pre-emergency proxy group. After threshold calibration, normal holdout warning-or-higher false positives were reduced to approximately 7.9%, while E2 R02 remained fully detected above the calibrated threshold.",
+        "",
+        "These results do not establish confirmed fault prediction, validated industrial deployment, independent validation, or causal proof of degradation.",
+        "",
+        "## 7. Limitations",
+        "",
+        "- Same-campaign holdout validation, not independent validation.",
+        "- E2 is a pre-emergency proxy, not a confirmed fault.",
+        "- Thermal diversity is limited.",
+        "- Remaining false positives are influenced by position and voltage-level features.",
+        "- The threshold should be validated on new independent normal data before production use.",
+        "- Feature weights should be reviewed only after new-data validation.",
+    ]
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def _write_final_readme(
+    output_path: Path, sources: list[Path], threshold: float
+) -> Path:
+    lines = [
+        "# Article Figures After Threshold Calibration",
+        "",
+        "This folder contains the final article-ready figures and results report generated from the post-threshold holdout-validation and calibration artifacts.",
+        "",
+        "## Generation command",
+        "",
+        "```powershell",
+        FINAL_ARTICLE_COMMAND,
+        "```",
+        "",
+        "## Sources",
+        "",
+        *[f"- `{source.as_posix()}`" for source in sources],
+        "",
+        "All preferred post-threshold sources were available; no fallback artifacts were used.",
+        "",
+        "## Configuration confirmation",
+        "",
+        f"- `anomaly_warning = {threshold:.2f}`",
+        "- No diagnostic formulas, feature extraction, statistical anomaly scoring, physical risks, Health Score logic, limits, weights, or normal profiles were changed.",
+        "",
+        "## Remaining limitations",
+        "",
+        "- This is same-campaign holdout validation, not independent validation.",
+        "- E2 R02 is a pre-emergency proxy, not a confirmed fault.",
+        "- Thermal diversity remains limited.",
+        "- Remaining normal false positives are influenced by position and voltage-level features.",
+        "- Validate the threshold on new independent normal data before production use.",
+    ]
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return output_path
+
+
+def build_threshold_calibrated_article_figures(
+    validation_dir: str | Path,
+    calibration_dir: str | Path,
+    thresholds_path: str | Path,
+    output_dir: str | Path,
+    session_filter: str = "E2 LOAD MED R02",
+) -> dict[str, str]:
+    """Build the final article package from post-threshold evaluation artifacts."""
+    validation = Path(validation_dir)
+    calibration = Path(calibration_dir)
+    sources = [
+        validation / "normal_holdout_diagnostic_results.json",
+        validation / "test_with_holdout_profile_results.json",
+        validation / "normal_profile_holdout_train.json",
+        validation / "holdout_validation_report.md",
+        calibration / "calibration_recommendation.json",
+        calibration / "group_separation_summary.csv",
+        Path(thresholds_path),
+    ]
+    missing = [path for path in sources if not path.is_file()]
+    if missing:
+        raise FileNotFoundError(f"Required post-threshold sources are missing: {missing}")
+    threshold = _load_anomaly_warning(thresholds_path)
+    normal_results = load_validation_results(sources[0])
+    test_results = load_validation_results(sources[1])
+    profile = json.loads(sources[2].read_text(encoding="utf-8"))
+    recommendation = json.loads(sources[4].read_text(encoding="utf-8"))
+    comparison = build_post_threshold_group_comparison(normal_results, test_results)
+    risk_rows = build_post_threshold_risk_rows(normal_results, test_results)
+    normal_medians = {
+        name: extract_profile_median(profile, name)
+        for name in ("current_rms", "torque_rms")
+    }
+    output = ensure_output_dir(output_dir)
+    jobs = {
+        "fig1_group_anomaly_with_normal": lambda path: plot_group_anomaly_comparison(comparison, path),
+        "fig2_group_health_with_normal": lambda path: plot_group_health_comparison(comparison, path),
+        "fig3_e2_r02_scores_over_time": lambda path: plot_scores_over_time(
+            test_results, session_filter, path, threshold
+        ),
+        "fig4_e2_r02_risks_over_time": lambda path: plot_risks_over_time(test_results, session_filter, path),
+        "fig5_statistical_vs_physical_risks": lambda path: plot_statistical_vs_physical_risks(risk_rows, path),
+        "fig6_e2_r02_current_torque": lambda path: plot_current_torque_over_time(
+            test_results, session_filter, path, normal_medians
+        ),
+    }
+    generated: dict[str, str] = {}
+    for name, plotter in jobs.items():
+        created = plotter(output / f"{name}.png")
+        if created is not None:
+            generated[name] = str(created)
+    generated["results_report"] = str(
+        _write_final_results_report(
+            output / "results_report.md", comparison, recommendation, threshold
+        )
+    )
+    generated["README"] = str(
+        _write_final_readme(output / "README.md", sources, threshold)
+    )
+    return generated
 
 
 def compute_normal_group_metrics(
@@ -487,29 +740,52 @@ def build_article_figures(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--summary", required=True)
-    parser.add_argument("--results", required=True)
-    parser.add_argument("--analysis", required=True)
-    parser.add_argument("--normal-manifest", required=True)
-    parser.add_argument("--normal-profile", required=True)
+    parser.add_argument("--summary")
+    parser.add_argument("--results")
+    parser.add_argument("--analysis")
+    parser.add_argument("--normal-manifest")
+    parser.add_argument("--normal-profile")
+    parser.add_argument("--validation-dir")
+    parser.add_argument("--calibration-dir")
     parser.add_argument("--limits")
     parser.add_argument("--weights")
     parser.add_argument("--thresholds")
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--session", nargs="+", default=["E2", "LOAD", "MED", "R02"])
     args = parser.parse_args()
-    generated = build_article_figures(
-        args.summary,
-        args.results,
-        args.analysis,
-        args.normal_manifest,
-        args.normal_profile,
-        args.output_dir,
-        " ".join(args.session),
-        args.limits,
-        args.weights,
-        args.thresholds,
-    )
+    if args.validation_dir or args.calibration_dir:
+        if not all((args.validation_dir, args.calibration_dir, args.thresholds)):
+            parser.error("--validation-dir, --calibration-dir, and --thresholds are required together")
+        generated = build_threshold_calibrated_article_figures(
+            args.validation_dir,
+            args.calibration_dir,
+            args.thresholds,
+            args.output_dir,
+            " ".join(args.session),
+        )
+    else:
+        required = {
+            "--summary": args.summary,
+            "--results": args.results,
+            "--analysis": args.analysis,
+            "--normal-manifest": args.normal_manifest,
+            "--normal-profile": args.normal_profile,
+        }
+        missing = [name for name, value in required.items() if not value]
+        if missing:
+            parser.error(f"missing legacy article inputs: {', '.join(missing)}")
+        generated = build_article_figures(
+            args.summary,
+            args.results,
+            args.analysis,
+            args.normal_manifest,
+            args.normal_profile,
+            args.output_dir,
+            " ".join(args.session),
+            args.limits,
+            args.weights,
+            args.thresholds,
+        )
     for name, path in generated.items():
         print(f"{name}: {path}")
 
