@@ -128,6 +128,41 @@ def test_plotting_functions_create_nonempty_files(tmp_path: Path) -> None:
     assert all(path is not None and path.stat().st_size > 0 for path in plots)
 
 
+def test_article_plot_labels_use_article_wording(tmp_path: Path, monkeypatch) -> None:
+    figures = []
+
+    def inspect_figure(fig, output_path):
+        figures.append(fig)
+        return Path(output_path)
+
+    monkeypatch.setattr(
+        "servo_diagnostic_model.evaluation.plots.save_figure", inspect_figure
+    )
+    plot_group_anomaly_comparison(_summary(), tmp_path / "anomaly.png")
+    plot_scores_over_time(_results(), "E2 LOAD MED R02", tmp_path / "scores.png")
+
+    anomaly_axis = figures[0].axes[0]
+    visible_text = [
+        anomaly_axis.get_title(),
+        anomaly_axis.get_ylabel(),
+        *(tick.get_text() for tick in anomaly_axis.get_xticklabels()),
+        *(text.get_text() for text in anomaly_axis.get_legend().get_texts()),
+        figures[1]._suptitle.get_text(),
+        *(
+            text.get_text()
+            for axis in figures[1].axes
+            for text in axis.get_legend().get_texts()
+        ),
+    ]
+    joined = " ".join(visible_text)
+
+    assert "Условно предаварийный" in joined
+    assert "прокси" not in joined.lower()
+    assert "proxy" not in joined.lower()
+    assert "anomaly Score" not in joined
+    assert "Anomaly Score" in joined
+
+
 def test_build_all_lab_plots_creates_expected_outputs(tmp_path: Path) -> None:
     summary_path = tmp_path / "summary.csv"
     results_path = tmp_path / "results.json"

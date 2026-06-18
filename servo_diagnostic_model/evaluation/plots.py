@@ -32,6 +32,9 @@ GROUP_COLORS = {
     "elevated_load": "#F4A261",
     "pre_emergency_proxy": "#D1495B",
 }
+GROUP_LABELS = {
+    "pre_emergency_proxy": "Условно предаварийный",
+}
 PHYSICAL_RISKS = ("current", "torque", "velocity", "voltage", "temperature")
 
 
@@ -92,6 +95,10 @@ def _style_axis(axis: plt.Axes) -> None:
     axis.spines[["top", "right"]].set_visible(False)
 
 
+def _group_label(group: str) -> str:
+    return GROUP_LABELS.get(group, group.replace("_", "\n"))
+
+
 def plot_group_anomaly_comparison(
     summary_df: pd.DataFrame, output_path: str | Path
 ) -> Path:
@@ -122,7 +129,7 @@ def plot_group_anomaly_comparison(
         zorder=3,
     )
     axis.set(title="Anomaly Score by experiment group", ylabel="Anomaly Score")
-    axis.set_xticks(x, [group.replace("_", "\n") for group in groups])
+    axis.set_xticks(x, [_group_label(group) for group in groups])
     axis.set_ylim(0, max(1.0, float(grouped["max_anomaly"].max()) * 1.12))
     axis.legend(frameon=False)
     _style_axis(axis)
@@ -160,7 +167,7 @@ def plot_group_health_comparison(
         zorder=3,
     )
     axis.set(title="Health Score by experiment group", ylabel="Health Score")
-    axis.set_xticks(x, [group.replace("_", "\n") for group in groups])
+    axis.set_xticks(x, [_group_label(group) for group in groups])
     axis.set_ylim(0, 100)
     axis.legend(frameon=False)
     _style_axis(axis)
@@ -238,7 +245,7 @@ def plot_scores_over_time(
     axes[1].legend(frameon=False)
     for axis in axes:
         _style_axis(axis)
-    fig.suptitle("E2 R02 pre-emergency proxy scores over time")
+    fig.suptitle("E2 R02: Условно предаварийный")
     fig.tight_layout()
     return save_figure(fig, output_path)
 
@@ -421,7 +428,7 @@ def plot_statistical_vs_physical_risks(
         ylabel="Mean risk, 0..1",
         ylim=(0, 1.02),
     )
-    axis.set_xticks(x, [group.replace("_", "\n") for group in groups])
+    axis.set_xticks(x, [_group_label(group) for group in groups])
     axis.legend(frameon=False)
     _style_axis(axis)
     fig.tight_layout()

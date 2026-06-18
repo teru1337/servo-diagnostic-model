@@ -1,22 +1,30 @@
-# Python
-.venv/
+# Python cache
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-dist/
-build/
 
-# Local laboratory raw data
-data/lab/**/raw/
-data/lab/**/exports/
-data/lab/metadata
-data/lab/manifests
+# Virtual environment
+.venv/
+venv/
+env/
 
-# Generated diagnostics
-artifacts/diagnostics/
-artifacts/plots/
+# Local data / heavy files
+*.sqlite3
+*.db
+*.rar
+*.zip
 
-# Keep profiles optional
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+*.docx
+
+data/
