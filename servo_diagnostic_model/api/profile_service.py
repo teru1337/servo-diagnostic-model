@@ -9,13 +9,8 @@ from typing import Any, Iterable
 import pandas as pd
 
 from servo_diagnostic_model.data.loader import load_telemetry
-from servo_diagnostic_model.data.preprocessing import (
-    coerce_numeric_columns,
-    dataframe_to_samples,
-    normalize_column_names,
-    parse_time_columns,
-    sort_by_time,
-)
+from servo_diagnostic_model.data.csv_pipeline import prepare_frame
+from servo_diagnostic_model.data.preprocessing import dataframe_to_samples
 from servo_diagnostic_model.data.validator import validate_dataframe
 from servo_diagnostic_model.data.windowing import make_windows
 from servo_diagnostic_model.features.feature_extractor import extract_features
@@ -97,10 +92,7 @@ def _load_and_prepare_csv(csv_path: CsvPath) -> pd.DataFrame:
     except (OSError, ValueError, pd.errors.ParserError) as exc:
         raise ValueError(f"Failed to load telemetry CSV '{csv_path}': {exc}") from exc
 
-    dataframe = normalize_column_names(dataframe)
-    dataframe = parse_time_columns(dataframe)
-    dataframe = coerce_numeric_columns(dataframe)
-    dataframe = sort_by_time(dataframe)
+    dataframe = prepare_frame(dataframe)
     validation_errors, _ = validate_dataframe(dataframe)
     if validation_errors:
         raise ValueError(

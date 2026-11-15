@@ -1,8 +1,8 @@
 """Robust statistical anomaly scoring for Version 0.2."""
 
-import math
-from numbers import Real
 from typing import Any
+
+from .numeric import is_finite_number
 
 
 def robust_feature_score(
@@ -10,15 +10,15 @@ def robust_feature_score(
 ) -> float:
     """Convert a robust z-score to a clamped feature anomaly score."""
 
-    if not _is_number(value) or not _is_number(stats.get("median")):
+    if not is_finite_number(value) or not is_finite_number(stats.get("median")):
         return 0.0
-    if not _is_number(z_limit) or z_limit <= 0:
+    if not is_finite_number(z_limit) or z_limit <= 0:
         z_limit = 5.0
 
     scale = stats.get("mad")
-    if not _is_number(scale) or scale <= 0:
+    if not is_finite_number(scale) or scale <= 0:
         scale = stats.get("std")
-    if not _is_number(scale) or scale <= 0:
+    if not is_finite_number(scale) or scale <= 0:
         scale = 1e-9
 
     z_score = abs(float(value) - float(stats["median"])) / float(scale)
@@ -64,7 +64,7 @@ def calculate_anomaly_score(
     feature_scores = {
         feature_name: robust_feature_score(features[feature_name], stats, z_limit)
         for feature_name, stats in selected_profile.items()
-        if isinstance(stats, dict) and _is_number(features.get(feature_name))
+        if isinstance(stats, dict) and is_finite_number(features.get(feature_name))
     }
     if not feature_scores:
         return {
@@ -79,7 +79,7 @@ def calculate_anomaly_score(
     total_weight = 0.0
     for feature_name, score in feature_scores.items():
         weight = weights.get(feature_name, 1.0)
-        if not _is_number(weight) or weight <= 0:
+        if not is_finite_number(weight) or weight <= 0:
             continue
         weighted_total += score * float(weight)
         total_weight += float(weight)
@@ -104,11 +104,3 @@ def _unavailable_result() -> dict[str, Any]:
 
 def _clamp(value: float) -> float:
     return min(max(float(value), 0.0), 1.0)
-
-
-def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )

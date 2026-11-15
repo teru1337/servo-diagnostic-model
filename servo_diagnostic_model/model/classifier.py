@@ -1,8 +1,8 @@
 """Rule-based state classification for Version 0.1."""
 
-import math
-from numbers import Real
 from typing import Any
+
+from .numeric import is_finite_number, bounded_risk
 
 
 VALID_STATES = {"normal", "observation", "warning", "critical", "unknown"}
@@ -19,21 +19,21 @@ def classify_state(
     safe_thresholds = thresholds or {}
     safe_features = features or {}
 
-    if not _is_number(health_score):
+    if not is_finite_number(health_score):
         return "unknown"
     if safe_features.get("sample_count") == 0:
         return "unknown"
     if (
         safe_features.get("is_too_short") is True
-        and _risk_value(safe_risks.get("data_quality")) >= 1.0
+        and bounded_risk(safe_risks.get("data_quality")) >= 1.0
     ):
         return "unknown"
 
     if safe_features.get("error_flag") is True or safe_features.get("fault_flag") is True:
         return "critical"
-    if _risk_value(safe_risks.get("error")) >= 1.0:
+    if bounded_risk(safe_risks.get("error")) >= 1.0:
         return "critical"
-    if _risk_value(safe_risks.get("statusword")) >= 1.0:
+    if bounded_risk(safe_risks.get("statusword")) >= 1.0:
         return "critical"
 
     health_warning = _threshold(safe_thresholds, "health_warning", 50.0)
@@ -45,7 +45,7 @@ def classify_state(
     risk_observation = _threshold(safe_thresholds, "risk_observation", 0.5)
     risk_warning = _threshold(safe_thresholds, "risk_warning", 0.75)
     risk_critical = _threshold(safe_thresholds, "risk_critical", 0.9)
-    anomaly = _risk_value(anomaly_score)
+    anomaly = bounded_risk(anomaly_score)
     score = float(health_score)
     excluded = ["statistical_anomaly", "data_quality"]
 
@@ -80,28 +80,14 @@ def has_risk_above(
     exclude: list[str] | None = None,
 ) -> bool:
     excluded = set(exclude or [])
-    if not _is_number(threshold):
+    if not is_finite_number(threshold):
         return False
     return any(
-        key not in excluded and _risk_value(value) >= float(threshold)
+        key not in excluded and bounded_risk(value) >= float(threshold)
         for key, value in (risks or {}).items()
     )
 
 
 def _threshold(thresholds: dict[str, Any], key: str, default: float) -> float:
     value = thresholds.get(key)
-    return float(value) if _is_number(value) else default
-
-
-def _risk_value(value: Any) -> float:
-    if not _is_number(value):
-        return 0.0
-    return min(max(float(value), 0.0), 1.0)
-
-
-def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    return float(value) if is_finite_number(value) else default

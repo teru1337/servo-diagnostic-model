@@ -1,8 +1,8 @@
 """Main-cause selection and deterministic human-readable explanations."""
 
-import math
-from numbers import Real
 from typing import Any
+
+from .numeric import is_finite_number, bounded_risk
 
 
 CAUSE_DETAILS = {
@@ -51,7 +51,7 @@ STATE_MESSAGES = {
 
 
 def severity_from_risk(risk: float) -> str:
-    value = _risk_value(risk)
+    value = bounded_risk(risk)
     if value >= 0.75:
         return "critical"
     if value >= 0.5:
@@ -69,12 +69,12 @@ def get_main_causes(
 ) -> list[dict[str, Any]]:
     if top_n <= 0:
         return []
-    minimum = _risk_value(min_risk)
+    minimum = bounded_risk(min_risk)
     ranked = sorted(
         (
-            (key, _risk_value(value))
+            (key, bounded_risk(value))
             for key, value in (risks or {}).items()
-            if _is_number(value) and _risk_value(value) >= minimum
+            if is_finite_number(value) and bounded_risk(value) >= minimum
         ),
         key=lambda item: (-item[1], item[0]),
     )
@@ -106,7 +106,7 @@ def generate_explanation(
 ) -> list[str]:
     safe_state = state if state in STATE_MESSAGES else "unknown"
     messages = [STATE_MESSAGES[safe_state]]
-    if _is_number(health_score):
+    if is_finite_number(health_score):
         messages.append(f"Health Score is {min(max(float(health_score), 0.0), 100.0):.1f}.")
     if safe_state == "unknown":
         messages.append("Telemetry is insufficient or its quality is too low.")
@@ -118,20 +118,6 @@ def generate_explanation(
             messages.extend(str(cause.get("message", "")) for cause in causes if cause.get("message"))
         else:
             messages.append("The state is driven by Health Score or anomaly thresholds.")
-    if _risk_value(anomaly_score) > 0:
-        messages.append(f"Anomaly Score is {_risk_value(anomaly_score):.3f}.")
+    if bounded_risk(anomaly_score) > 0:
+        messages.append(f"Anomaly Score is {bounded_risk(anomaly_score):.3f}.")
     return messages
-
-
-def _risk_value(value: Any) -> float:
-    if not _is_number(value):
-        return 0.0
-    return min(max(float(value), 0.0), 1.0)
-
-
-def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )

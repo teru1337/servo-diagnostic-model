@@ -133,14 +133,8 @@ def diagnose_csv(
 ) -> list[DiagnosticResult]:
     """Load, validate, window, and diagnose a telemetry CSV."""
 
-    from servo_diagnostic_model.data.loader import load_telemetry
-    from servo_diagnostic_model.data.preprocessing import (
-        coerce_numeric_columns,
-        dataframe_to_samples,
-        normalize_column_names,
-        parse_time_columns,
-        sort_by_time,
-    )
+    from servo_diagnostic_model.data.csv_pipeline import read_csv
+    from servo_diagnostic_model.data.preprocessing import dataframe_to_samples
     from servo_diagnostic_model.data.validator import validate_dataframe
 
     limits = load_json_config(limits_path)
@@ -150,11 +144,7 @@ def diagnose_csv(
         load_json_config(normal_profile_path) if normal_profile_path is not None else None
     )
 
-    dataframe = load_telemetry(csv_path)
-    dataframe = normalize_column_names(dataframe)
-    dataframe = parse_time_columns(dataframe)
-    dataframe = coerce_numeric_columns(dataframe)
-    dataframe = sort_by_time(dataframe)
+    dataframe = read_csv(csv_path)
     validation_errors, validation_warnings = validate_dataframe(dataframe)
     samples = dataframe_to_samples(dataframe)
     dataset = TelemetryDataset(
@@ -198,6 +188,10 @@ def _to_json_compatible(value: Any) -> Any:
         return {str(key): _to_json_compatible(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
         return [_to_json_compatible(item) for item in value]
+    return _json_scalar(value)
+
+
+def _json_scalar(value: Any) -> Any:
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Path):

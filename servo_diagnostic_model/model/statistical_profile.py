@@ -1,11 +1,13 @@
 """Median/MAD normal profiles for Version 0.2 statistical diagnostics."""
 
 import json
-import math
-from numbers import Real
+import os
+import tempfile
 from pathlib import Path
 from statistics import mean, median, pstdev
 from typing import Any
+
+from .numeric import is_finite_number
 
 
 EXCLUDED_FEATURE_NAMES = {
@@ -64,7 +66,7 @@ def infer_numeric_feature_names(feature_rows: list[dict[str, Any]]) -> list[str]
         name
         for row in feature_rows
         for name, value in row.items()
-        if name not in EXCLUDED_FEATURE_NAMES and _is_number(value)
+        if name not in EXCLUDED_FEATURE_NAMES and is_finite_number(value)
     }
     return sorted(names)
 
@@ -108,14 +110,19 @@ def fit_normal_profile(
 
 
 def save_profile(profile: dict[str, Any], path: str) -> None:
-    """Save a normal profile as JSON."""
+    """Replace a JSON profile only after its complete contents are written."""
 
     profile_path = Path(path)
+    content = json.dumps(profile, indent=2, sort_keys=True, allow_nan=False)
     profile_path.parent.mkdir(parents=True, exist_ok=True)
-    profile_path.write_text(
-        json.dumps(profile, indent=2, sort_keys=True, allow_nan=False),
-        encoding="utf-8",
-    )
+    descriptor, temp_name = tempfile.mkstemp(dir=profile_path.parent)
+    temp_path = Path(temp_name)
+    try:
+        os.close(descriptor)
+        temp_path.write_text(content, encoding="utf-8")
+        temp_path.replace(profile_path)
+    finally:
+        temp_path.unlink(missing_ok=True)
 
 
 def load_profile(path: str) -> dict[str, Any]:
@@ -155,7 +162,7 @@ def _profile_for_rows(
         values = [
             float(row[feature_name])
             for row in rows
-            if _is_number(row.get(feature_name))
+            if is_finite_number(row.get(feature_name))
         ]
         if len(values) >= min_count:
             profile[feature_name] = calculate_feature_stats(values)
@@ -163,16 +170,8 @@ def _profile_for_rows(
 
 
 def _clean_values(values: list[Any]) -> list[float]:
-    return [float(value) for value in values if _is_number(value)]
+    return [float(value) for value in values if is_finite_number(value)]
 
 
 def _quality_below(value: Any, limit: float) -> bool:
-    return value is None or (_is_number(value) and float(value) < limit)
-
-
-def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    return value is None or (is_finite_number(value) and float(value) < limit)

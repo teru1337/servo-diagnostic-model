@@ -1,8 +1,8 @@
 """Config-driven physical risk calculations for Version 0.1."""
 
-import math
-from numbers import Real
 from typing import Any
+
+from .numeric import is_finite_number
 
 
 REQUIRED_RISK_KEYS = (
@@ -31,9 +31,9 @@ CRITICAL_FEATURE_GROUPS = (
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     """Clamp a finite numeric value to the requested range."""
 
-    if not _is_number(low) or not _is_number(high) or low > high:
+    if not is_finite_number(low) or not is_finite_number(high) or low > high:
         raise ValueError("clamp requires finite limits where low <= high.")
-    if not _is_number(value):
+    if not is_finite_number(value):
         return float(low)
     return float(min(max(value, low), high))
 
@@ -45,7 +45,7 @@ def safe_divide(
 ) -> float:
     """Divide finite numbers, returning default for invalid input or zero divisor."""
 
-    if not _is_number(numerator) or not _is_number(denominator) or denominator == 0:
+    if not is_finite_number(numerator) or not is_finite_number(denominator) or denominator == 0:
         return float(default)
     return float(numerator / denominator)
 
@@ -53,7 +53,7 @@ def safe_divide(
 def linear_risk(value: float, safe: float, critical: float) -> float:
     """Return linearly increasing risk from safe to critical."""
 
-    if not all(_is_number(item) for item in (value, safe, critical)):
+    if not all(is_finite_number(item) for item in (value, safe, critical)):
         return 0.0
     if critical <= safe:
         return 0.0
@@ -63,7 +63,7 @@ def linear_risk(value: float, safe: float, critical: float) -> float:
 def inverse_linear_risk(value: float, safe: float, critical: float) -> float:
     """Return linearly increasing risk as value falls from safe to critical."""
 
-    if not all(_is_number(item) for item in (value, safe, critical)):
+    if not all(is_finite_number(item) for item in (value, safe, critical)):
         return 0.0
     if critical >= safe:
         return 0.0
@@ -134,7 +134,7 @@ def calculate_temperature_risk(
     slope = features.get("temp_slope")
     slope_risk = (
         _ratio_risk(max(float(slope), 0.0), limits.get("temp_slope_limit"))
-        if _is_number(slope)
+        if is_finite_number(slope)
         else 0.0
     )
     slope_risk = _gate_safe_temperature_slope_risk(slope_risk, features, limits)
@@ -199,7 +199,7 @@ def calculate_physical_risks(
 
 
 def _ratio_risk(value: Any, limit: Any) -> float:
-    if not _is_number(value) or not _is_number(limit) or limit <= 0:
+    if not is_finite_number(value) or not is_finite_number(limit) or limit <= 0:
         return 0.0
     return clamp(safe_divide(abs(float(value)), float(limit)))
 
@@ -211,21 +211,21 @@ def _gate_safe_temperature_slope_risk(
 ) -> float:
     temp_max = features.get("temp_max")
     temp_safe = limits.get("temp_safe")
-    if not _is_number(temp_max) or not _is_number(temp_safe) or temp_max >= temp_safe:
+    if not is_finite_number(temp_max) or not is_finite_number(temp_safe) or temp_max >= temp_safe:
         return clamp(slope_risk)
 
     safe_cap = limits.get("temp_slope_safe_risk_cap")
-    if _is_number(safe_cap):
+    if is_finite_number(safe_cap):
         slope_risk = min(slope_risk, clamp(float(safe_cap)))
 
     temp_min = features.get("temp_min")
     quantized_range = limits.get("temp_quantized_range_C")
     quantized_cap = limits.get("temp_slope_quantized_risk_cap")
     if (
-        _is_number(temp_min)
-        and _is_number(quantized_range)
+        is_finite_number(temp_min)
+        and is_finite_number(quantized_range)
         and quantized_range >= 0
-        and _is_number(quantized_cap)
+        and is_finite_number(quantized_cap)
         and float(temp_max) - float(temp_min) <= float(quantized_range)
     ):
         slope_risk = min(slope_risk, clamp(float(quantized_cap)))
@@ -248,12 +248,4 @@ def _feature_available(features: dict[str, Any], name: str) -> bool:
     value = features[name]
     if name == "statusword_available":
         return value is True
-    return isinstance(value, bool) or _is_number(value)
-
-
-def _is_number(value: Any) -> bool:
-    return (
-        isinstance(value, Real)
-        and not isinstance(value, bool)
-        and math.isfinite(float(value))
-    )
+    return isinstance(value, bool) or is_finite_number(value)
