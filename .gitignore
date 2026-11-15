@@ -28,3 +28,8 @@ Thumbs.db
 *.docx
 
 /data/
+
+# Local project guidance
+/AGENTS.md
+/.agents/skills/
+/PROJECT_ARCHITECTURE_FOR_ARTICLE.md

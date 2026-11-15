@@ -91,7 +91,7 @@ python -m servo_diagnostic_model.api.profile_service \
 | [evaluation](servo_diagnostic_model/evaluation/) и [artifacts](artifacts/) | Сценарии оценки и сохранённые результаты предыдущих запусков |
 | [tests](tests/) | Проверки модели, обработки данных и API |
 
-Для разработки начни с [архитектуры](markdowns/04_CODE_ARCHITECTURE.md), [правил проекта](AGENTS.md) и [методики оценки](markdowns/12_TESTING_AND_EVALUATION.md). Для параметров лабораторной оценки выполни `python -m servo_diagnostic_model.evaluation.lab_validation --help`.
+Для разработки начни с [архитектуры](markdowns/04_CODE_ARCHITECTURE.md) и [методики оценки](markdowns/12_TESTING_AND_EVALUATION.md). Для параметров лабораторной оценки выполни `python -m servo_diagnostic_model.evaluation.lab_validation --help`.
 
 ## Границы применения
 
